@@ -1,7 +1,7 @@
 use axum::{http::HeaderMap, Json};
 use mysql::{prelude::Queryable, PooledConn};
 use mysql_common::frunk::labelled::chars::P;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::{
     bearer,
@@ -135,10 +135,7 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> mysql::Result<()
     Ok(())
 }
 
-pub async fn insert_custom_box_field(
-    headers: HeaderMap,
-    Json(value): Json<Value>,
-) -> ResponseResult {
+pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = verify_perm(headers, &mut conn)?;
     debug_info(format!(
@@ -290,4 +287,42 @@ pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         table, data.value, data.display
     ))?;
     Ok(Response::empty())
+}
+
+pub async fn get_custom_info() -> ResponseResult {
+    let mut conn = get_conn()?;
+    let mut data = Vec::new();
+    for ty in 0..=1 {
+        let query_values = |table, conn: &mut PooledConn| {
+            conn.query_map(
+                format!("SELECT value FROM {table} ORDER BY create_time"),
+                |value: String| value,
+            )
+        };
+        let text_infos = query_values(CUSTOM_FIELDS[ty][0], &mut conn)?;
+        let time_infos = query_values(CUSTOM_FIELDS[ty][1], &mut conn)?;
+        let _box_infos: Vec<_> = query_values(CUSTOM_FIELDS[ty][2], &mut conn)?;
+        let mut box_infos = Vec::new();
+        let table = CUSTOM_BOX_FIELDS[ty];
+        for text in _box_infos {
+            let t = conn.query_map(
+                format!(
+                    "SELECT value FROM {table} WHERE display = '{}' ORDER BY create_time",
+                    text
+                ),
+                |text: String| text,
+            )?;
+            box_infos.push(json!({
+                "display": text,
+                "values": t
+            }));
+        }
+        data.push(json!({
+            "ty": ty,
+            "text_infos": text_infos,
+            "time_infos": time_infos,
+            "box_infos": box_infos
+        }));
+    }
+    Ok(Response::ok(json!(data)))
 }

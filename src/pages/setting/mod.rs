@@ -14,4 +14,22 @@ pub fn setting_router() -> Router {
         .route("/box/option/update", post(option::update_option_value))
         .route("/box/option/delete", delete(option::delete_option_value))
         .route("/customize/info/insert", post(custom::insert_custom_field))
+        .route(
+            "/customize/info/box/insert",
+            post(custom::insert_box_option),
+        )
+        .route("/customize/info/update", post(custom::update_custom_field))
+        .route(
+            "/customize/info/box/update",
+            post(custom::update_box_option),
+        )
+        .route(
+            "/customize/info/delete",
+            delete(custom::delete_custom_field),
+        )
+        .route(
+            "/customize/info/box/delete",
+            delete(custom::delete_box_option),
+        )
+        .route("/customize/info/infos", get(custom::get_custom_info))
 }

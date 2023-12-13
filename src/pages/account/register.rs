@@ -12,15 +12,15 @@ pub async fn root_register_all(Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let data: User = serde_json::from_value(value)?;
     let digests = md5::compute("12345678");
-
+    println!("{:?}", data);
     conn.exec_drop(
         format!(
             "INSERT INTO user (id, name, permissions, department, identity, sex, password) 
-        VALUES ('{}', '{}', '{}', '{}', '{}', '{}', :psw)",
+        VALUES ('{}', '{}', '{}', {}, '{}', '{}', :psw)",
             data.id,
             data.name,
             data.permissions.unwrap(),
-            if data.identity > 0 { data.department.unwrap()} else {"NULL".to_string()},
+            if data.identity > 0 { format!("'{}'", data.department.unwrap())} else {"NULL".to_string()},
             data.identity,
             data.sex
         ),

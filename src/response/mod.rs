@@ -53,7 +53,7 @@ impl Response {
     }
     /// 内部错误
     pub fn internal_server_error(e: impl Display) -> Self {
-        Self::new(StatusCode::INSUFFICIENT_STORAGE, -1, json!(e.to_string()))
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, -1, json!(e.to_string()))
     }
     /// 参数格式错误
     pub fn invalid_format(e: impl Display) -> Self {
@@ -112,7 +112,7 @@ impl From<std::io::Error> for Response {
 
 impl From<serde_json::Error> for Response {
     fn from(value: serde_json::Error) -> Self {
-        Response::token_error(value)
+        Response::invalid_format(value)
     }
 }
 impl From<std::time::SystemTimeError> for Response {

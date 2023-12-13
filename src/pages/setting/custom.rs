@@ -1,11 +1,10 @@
 use axum::{http::HeaderMap, Json};
 use mysql::{prelude::Queryable, PooledConn};
-use mysql_common::frunk::labelled::chars::P;
 use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::{catch_some_mysql_error, commit_or_rollback, get_conn, Database},
+    database::{c_or_r, catch_some_mysql_error, get_conn, Database},
     debug_info,
     libs::{
         perm::Identity,
@@ -99,10 +98,10 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     }
     CustomizeFieldType::new(&data.display)?;
     conn.query_drop("BEGIN")?;
-    commit_or_rollback(_insert_field, &mut conn, &data, false)?;
+    c_or_r(_insert_field, &mut conn, &data, false)?;
     Ok(Response::empty())
 }
-fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> mysql::Result<()> {
+fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
     let field = CustomizeFieldType::new(&param.display).unwrap();
     let create_time = TIME::now().unwrap().format(TimeFormat::YYYYMMDD_HHMMSS);
     let table = CUSTOM_FIELDS[param.ty][field as usize];
@@ -182,11 +181,11 @@ pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     }
     conn.query_drop("BEGIN")?;
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    commit_or_rollback(_update_custom_field, &mut conn, &data, true)?;
+    c_or_r(_update_custom_field, &mut conn, &data, true)?;
     Ok(Response::empty())
 }
 
-fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> mysql::Result<()> {
+fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
     let field = CustomizeFieldType::new(&param.display).unwrap();
     // 更新字段
     let table = CUSTOM_FIELDS[param.ty][field as usize];
@@ -244,11 +243,11 @@ pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     }
     conn.query_drop("BEGIN")?;
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    commit_or_rollback(_delete_custom_field, &mut conn, &data, true)?;
+    c_or_r(_delete_custom_field, &mut conn, &data, true)?;
     Ok(Response::empty())
 }
 
-fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> mysql::Result<()> {
+fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
     let field = CustomizeFieldType::new(&param.display).unwrap();
     // 删除字段
     let table = CUSTOM_FIELDS[param.ty][field as usize];

@@ -35,6 +35,7 @@ pub struct User {
 pub fn account_router() -> Router {
     Router::new()
         .route("/user/login", post(login::user_login))
+        .route("/root/register", post(register::root_register_all))
         .route("/customer/login", post(login::customer_login))
         .route("/user/register", post(register::register_user))
         .route("/user/set/psw", post(set_user_password))

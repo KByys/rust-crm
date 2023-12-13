@@ -8,6 +8,27 @@ use serde_json::Value;
 
 use super::User;
 
+pub async fn root_register_all(Json(value): Json<Value>) -> ResponseResult {
+    let mut conn = get_conn()?;
+    let data: User = serde_json::from_value(value)?;
+    let digests = md5::compute("12345678");
+
+    conn.exec_drop(
+        format!(
+            "INSERT INTO user (id, name, permissions, department, identity, sex, password) 
+        VALUES ('{}', '{}', '{}', '{}', '{}', '{}', :psw)",
+            data.id,
+            data.name,
+            data.permissions.unwrap(),
+            data.department.unwrap(),
+            data.identity,
+            data.sex
+        ),
+        params! {"psw" => digests.0},
+    )?;
+    Ok(Response::empty())
+}
+
 pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;

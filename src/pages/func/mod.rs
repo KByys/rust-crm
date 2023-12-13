@@ -1,3 +1,4 @@
+mod appointment;
 use axum::Router;
 
 mod customer;

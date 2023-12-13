@@ -1,3 +1,4 @@
+#[forbid(unused)]
 mod table;
 use std::fmt::Display;
 
@@ -25,15 +26,10 @@ pub fn catch_some_mysql_error(code: u16, msg: impl Display, err: mysql::Error) -
         e => Response::internal_server_error(e),
     }
 }
-
-pub fn commit_or_rollback<F, T>(
-    f: F,
-    conn: &mut PooledConn,
-    param: T,
-    start_check: bool,
-) -> Result<()>
+/// 成功提交，失败回滚
+pub fn c_or_r<F, T>(f: F, conn: &mut PooledConn, param: T, start_check: bool) -> Result<(), Response>
 where
-    F: Fn(&mut PooledConn, T) -> Result<()>,
+    F: Fn(&mut PooledConn, T) -> Result<(), Response>,
 {
     let result = match f(conn, param) {
         Ok(_) => {
@@ -78,6 +74,9 @@ pub fn create_table() -> Result<()> {
     conn.query_drop("INSERT IGNORE INTO store_house (value, create_time) VALUES ('主仓库', '0000-00-00 00:00:00')")?;
     conn.query_drop(Table::CUSTOMER_TABLE)?;
     conn.query_drop(Table::CUSTOMER_LOGIN_TABLE)?;
+    conn.query_drop(Table::APPOINTMENT_TABLE)?;
+    conn.query_drop(Table::SING_TABLE)?;
+
     // 自定义字段，客户和产品
     for fields in crate::pages::CUSTOM_FIELDS {
         for table in fields {
@@ -112,18 +111,10 @@ pub fn create_table() -> Result<()> {
                 "CREATE TABLE IF NOT EXISTS {table} (
                     id VARCHAR(15) NOT NULL,
                     display VARCHAR(30) NOT NULL,
-                    value VARCHAR(30),
+                    value VARCHAR(30)
                 )"
             ))?;
         }
-        //  忘了为什么要单独创建下拉框字段表
-        // conn.query_drop(format!(
-        //     "CREATE TABLE IF NOT EXISTS {} (
-        //         id VARCHAR(15) NOT NULL,
-        //         value VARCHAR(30),
-        //     )",
-        //     fields[2]
-        // ))?;
     }
     Ok(())
 }

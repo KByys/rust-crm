@@ -3,7 +3,6 @@ pub struct Table;
 // 时间类型固定 25 个字符
 // 手机号码 15个字符
 
-
 impl Table {
     /// administrator -1 总经理，0 管理员， 1 成员
     pub const USER_TABLE: &str = "CREATE TABLE IF NOT EXISTS user(
@@ -12,7 +11,7 @@ impl Table {
             password BINARY(16) NOT NULL,
             department VARCHAR(15) NULL,
             permissions INT NOT NULL,
-            administrator INT NOT NULL,
+            identity INT NOT NULL,
             sex INT NOT NULL,
             PRIMARY KEY (id)
         )
@@ -29,6 +28,7 @@ impl Table {
             next_visit_time VARCHAR(25),
             need TEXT,
             fax VARCHAR(15),
+            post VARCHAR(15),
             address VARCHAR(100),
             industry VARCHAR(30) NULL,
             birthday VARCHAR(8),
@@ -51,23 +51,33 @@ impl Table {
             FOREIGN KEY (id) REFERENCES customer(id)
         )
     ";
-
-    /// 拜访信息记录表
+    /// 签到表
     /// 
-    /// appendix 存放附件地址的base64编码，如果包含多个附件地址，用 `&`隔开
-    pub const VISITED_RECORD_TABLE: &str = "CREATE TABLE IF NOT EXISTS visited_record(
-             user_id VARCHAR(15) NOT NULL,
-             customer_id VARCHAR(15) NOT NULL,
-             visited_time VARCHAR(25) NOT NULL,
-             address VARCHAR(100) NOT NULL,
-             appendix VARCHAR TEXT
+    /// file 为附件的base64编码地址，如果有多个附件则用`&`隔开
+    pub const SING_TABLE: &str = "CREATE TABLE IF NOT EXISTS sign(
+            signer VARCHAR(15) NOT NULL,
+            customer VARCHAR(15),
+            address VARCHAR(150),
+            sign_time VARCHAR(25),
+            file TEXT
         )
     ";
+    
+    // TODO 还需要修改
     /// 预约拜访时间表
+    /// status, 0 未完成， 1 已完成, 2 逾期（当天没有完成即逾期）
+    /// applicant, 发起者，可以是自己，也可以是上司
+    /// salesman，如果客户不为空，则只能是该客户的业务员
+    /// appointment，联系时间，格式，YYYY-MM-DD HH:MM
     pub const APPOINTMENT_TABLE: &str = "CREATE TABLE IF NOT EXISTS appointment(
-            user_id VARCHAR(15) NOT NULL,
-            customer_id VARCHAR(15) NOT NULL,
-            appointment VARCHAR(25) NOT NULL,
+            applicant VARCHAR(15) NOT NULL,
+            salesman VARCHAR(15) NOT NULL,
+            customer VARCHAR(15) NOT NULL,
+            appointment VARCHAR(16) NOT NULL,
+            finish_time VARCHAR(16),
+            status INT NOT NULL,
+            theme VARCHAR(30),
+            content TEXT
         )
     ";
     /// ty, 0 公司人员， 1 客户

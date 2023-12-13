@@ -22,8 +22,11 @@ pub fn debug_info(info: String) {
     )
 }
 
-#[derive(serde::Serialize, FromRow, Debug, serde::Deserialize)]
+#[derive(serde::Serialize, FromRow, Debug, serde::Deserialize, Clone)]
 pub struct TextInfos {
     pub display: String,
     pub value: String,
 }
+
+
+

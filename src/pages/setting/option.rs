@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::{commit_or_rollback, get_conn, Database},
+    database::{c_or_r, get_conn, Database},
     debug_info,
     libs::{perm::Identity, time::TIME},
     parse_jwt_macro,
@@ -165,10 +165,10 @@ pub async fn update_option_value(headers: HeaderMap, Json(value): Json<Value>) -
     let (id, mut conn, info) = parse_option!(headers, value, true);
     debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:?}", id, info));
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    commit_or_rollback(_update, &mut conn, &info, true)?;
+    c_or_r(_update, &mut conn, &info, true)?;
     Ok(Response::empty())
 }
-fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> mysql::Result<()> {
+fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
     let opt = DataOptions::from(param.ty);
 
     if let DataOptions::Department = opt {
@@ -182,7 +182,8 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> mysql::Result<()
         opt.table_name(),
         param.info.new_value,
         param.info.old_value
-    ))
+    ))?;
+    Ok(())
 }
 
 pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
@@ -198,10 +199,10 @@ pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -
         }
     }
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    commit_or_rollback(_delete, &mut conn, &info, false)?;
+    c_or_r(_delete, &mut conn, &info, false)?;
     Ok(Response::empty())
 }
-fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> mysql::Result<()> {
+fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
     let opt = DataOptions::from(param.ty);
     if let DataOptions::Department = opt {
         conn.query_drop(format!(
@@ -213,7 +214,8 @@ fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> mysql::Result<()
         "DELETE FROM {} WHERE value = '{}'",
         opt.table_name(),
         param.info.delete_value
-    ))
+    ))?;
+    Ok(())
 }
 
 pub async fn query_option_value() -> ResponseResult {

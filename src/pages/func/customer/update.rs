@@ -5,15 +5,17 @@ use serde_json::Value;
 use crate::{
     bearer,
     database::{get_conn, Database},
-    debug_info, parse_jwt_macro, Response, ResponseResult,
+    debug_info,
+    pages::CUSTOM_FIELD_INFOS,
+    parse_jwt_macro, Response, ResponseResult,
 };
 #[derive(serde::Deserialize)]
 struct Info {
     id: String,
-    data: FixedCustomerInfos,
+    data: Customer,
 }
 
-use super::FixedCustomerInfos;
+use super::Customer;
 
 pub async fn update_customer_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
@@ -45,7 +47,7 @@ pub async fn update_customer_infos(headers: HeaderMap, Json(value): Json<Value>)
 }
 
 fn _update(conn: &mut PooledConn, info: Info) -> mysql::Result<()> {
-    let cus = &info.data;
+    let cus = &info.data.fixed_infos;
     conn.query_drop(format!("UPDATE customer SET id = '{}', name = ' {}', company = '{}', is_share = {},
         sex = {}, chat = '{}', next_visit_time = '{}', need = '{}', fax == '{}', post = '{}', address = '{}',
         industry = '{}', birthday = '{}', remark = '{}', ty = '{}', tag = '{}', status = '{}', source = '{}', role = '{}'
@@ -64,5 +66,17 @@ fn _update(conn: &mut PooledConn, info: Info) -> mysql::Result<()> {
             cus.id, info.id
         ))?;
     }
+
+    for i in 0..3 {
+        let table = CUSTOM_FIELD_INFOS[0][i];
+        // 修改自定义字段 
+        for values in info.data.custom_infos.get(i) {
+            conn.query_drop(format!(
+                "UPDATE {table} SET id = '{}', value = '{}' WHERE id = '{}' AND display = '{}'",
+                cus.id, values.value, info.id, values.display
+            ))?;
+        }
+    }
+
     Ok(())
 }

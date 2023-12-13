@@ -1,23 +1,63 @@
-use axum::{http::HeaderMap, Json};
-use serde_json::Value;
+use std::fmt::Display;
 
+use axum::{http::HeaderMap, Json};
+use chrono::prelude::TimeZone;
+use chrono::{Days, Months};
+use mysql::{prelude::Queryable, PooledConn};
+use serde_json::{json, Value};
+
+use crate::do_if;
+use crate::libs::time::{TimeFormat, TIME};
 use crate::{
-    bearer, database::get_conn, libs::perm::Identity, parse_jwt_macro, Response, ResponseResult,
+    bearer, database::get_conn, libs::perm::Identity, pages::CUSTOM_FIELD_INFOS, parse_jwt_macro,
+    Response, ResponseResult, TextInfos,
 };
 
-const QUERY_CUSTOMER_TABLE: &str = "";
-
-use super::FixedCustomerInfos;
+use super::{CCInfos, Customer, FCInfos};
+#[allow(non_camel_case_types)]
+#[allow(clippy::upper_case_acronyms)]
 #[repr(i32)]
-enum FilterTy {
+enum FilterType {
     /// 未分类
-    Uncategorized = -2,
-    All = -1,
+    UNCATEGORIZED = -2,
+    ALL = -1,
     /// 今日需回访
-    TodayFollowupVisit = 0,
+    TODAY_FOLLOW_UP_VISIT = 0,
     /// 今日已回访
-    VisitedToday,
+    VISITED_TODAY,
+    /// 三天内已拜访
+    VISITED_THREE_DAYS_AGO,
+    VISITED_WEEK_AGO,
+    VISITED_HALF_MONTH_AGO,
+    VISITED_MONTH_AGO,
+    /// 今日新增
+    ADDED_TODAY,
+    /// 一周内新增
+    ADDED_WEEK_AGO,
+    ADDED_HALF_MONTH_AGO,
+    ADDED_MONTH_AGO,
 }
+
+impl From<&str> for FilterType {
+    fn from(value: &str) -> Self {
+        match value {
+            "-2" => Self::UNCATEGORIZED,
+            "-1" => Self::ALL,
+            "0" => Self::TODAY_FOLLOW_UP_VISIT,
+            "1" => Self::VISITED_TODAY,
+            "2" => Self::VISITED_THREE_DAYS_AGO,
+            "3" => Self::VISITED_WEEK_AGO,
+            "4" => Self::VISITED_HALF_MONTH_AGO,
+            "5" => Self::VISITED_MONTH_AGO,
+            "6" => Self::ADDED_TODAY,
+            "7" => Self::ADDED_WEEK_AGO,
+            "8" => Self::ADDED_HALF_MONTH_AGO,
+            "9" => Self::ADDED_MONTH_AGO,
+            _ => Self::ALL,
+        }
+    }
+}
+
 
 #[derive(serde::Deserialize)]
 struct Info {
@@ -36,35 +76,80 @@ struct ReceiveInfo {
     filter: Info,
     scope: Info,
 }
-
-pub async fn query_all_customer_infos(
-    headers: HeaderMap,
-    Json(value): Json<Value>,
-) -> ResponseResult {
+/// 直接查询客户信息，对比分页查询
+pub async fn qc_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ReceiveInfo = serde_json::from_value(value)?;
+    let customers = query_all_customers_infos(id, &data, &mut conn)?;
+    Ok(Response::ok(json!(customers)))
+}
+
+/// 分页查询客户信息
+///
+pub async fn qc_infos_with_pages(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+    let bearer = bearer!(&headers);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let data: ReceiveInfo = serde_json::from_value(value)?;
+    let customers = query_all_customers_infos(id, &data, &mut conn)?;
+    if data.page_size == 0 {
+        return Err(Response::invalid_value("page_size不允许为0"));
+    };
+    let total = customers.len();
+    let total_pages = total / data.page_size + do_if!(total % data.page_size == 0 => 0, 1);
+    let start = data.current_page * data.current_page;
+    let end = start + data.page_size;
+    if start >= total {
+        let empty: Vec<()> = Vec::new();
+        Ok(Response::ok(json!({
+            "total": total,
+            "total_pages": total_pages,
+            "current_page": data.current_page,
+            "page_size": data.page_size,
+            "data": empty
+        })))
+    } else {
+        let slice = do_if!(end > total => &customers[start..], &customers[start..end]);
+        Ok(Response::ok(json!({
+            "total": total,
+            "total_pages": total_pages,
+            "current_page": data.current_page,
+            "page_size": data.page_size,
+            "data": slice
+        })))
+    }
+}
+fn query_all_customers_infos(
+    id: String,
+    data: &ReceiveInfo,
+    conn: &mut PooledConn,
+) -> Result<Vec<Customer>, Response> {
+    let status = match &data.status {
+        Some(status) => {
+            do_if!(status.is_empty() => "status is not null".to_owned(), format!("status = '{}'", status))
+        }
+        _ => "status = ''".to_string(),
+    };
     let mut customers = match data.scope.ty {
-        0 => query_my_customers(&data.filter, &id)?,
-        1 => query_share_customers(&data.filter)?,
+        0 => qm_customers(&data.filter, &id, status, conn)?,
+        1 => qs_customers(&data.filter, status, conn)?,
         2 => {
-            let depart = match Identity::new(&id, &mut conn)? {
+            let depart = match Identity::new(&id, conn)? {
                 Identity::Boss => data.scope.info.clone(),
                 Identity::Administrator(_, depart) => depart,
                 _ => return Err(Response::permission_denied()),
             };
-            query_department_customers(&data.filter, &depart)?
+            qc_with_d(&data.filter, &depart, status, conn)?
         }
         ty => return Err(Response::invalid_value(format!("scope的ty: {} 非法", ty))),
     };
-    for (info, _) in &mut customers {
-        sort(info, data.sort)
-    }
-    todo!()
+    sort(&mut customers, data.sort);
+    get_custom_infos(customers, conn).map_err(Into::into)
 }
 
-fn sort(data: &mut [FixedCustomerInfos], sort: usize) {
+fn sort(data: &mut [FCInfos], sort: usize) {
     data.sort_by(|v1, v2| {
         use rust_pinyin::get_pinyin;
         match sort {
@@ -76,27 +161,161 @@ fn sort(data: &mut [FixedCustomerInfos], sort: usize) {
             2 => v1.create_time.cmp(&v2.create_time),
             // 下次预约时间
             3 => v1.next_visit_time.cmp(&v2.next_visit_time),
+            4 => todo!(),
+            5 => todo!(),
             _ => std::cmp::Ordering::Equal,
         }
     })
 }
 
-fn complete_customer_infos(data: Vec<FixedCustomerInfos>) -> mysql::Result<Vec<Value>> {
-    todo!()
+fn get_custom_infos(data: Vec<FCInfos>, conn: &mut PooledConn) -> mysql::Result<Vec<Customer>> {
+    let mut customers = Vec::new();
+    for info in data {
+        let mut custom_infos = CCInfos::default();
+        for i in 0..=2 {
+            let infos: Vec<TextInfos> = conn.query_map(
+                format!(
+                    "SELECT display, value FROM {} WHERE id = '{}'",
+                    CUSTOM_FIELD_INFOS[0][i], info.id
+                ),
+                |info| info,
+            )?;
+            *custom_infos.get_mut(i) = infos;
+        }
+        customers.push(Customer {
+            fixed_infos: info,
+            custom_infos,
+        });
+    }
+    Ok(customers)
 }
+type VecCustomer = mysql::Result<Vec<FCInfos>>;
+/// 查询共享的客户信息
+fn qs_customers(f: &Info, status: String, conn: &mut PooledConn) -> VecCustomer {
+    if let Some(filter) = gen_filter(f, &status) {
+        conn.query_map(query_statement(format!("is_share = 0 AND {filter}")), |f| f)
+    } else {
+        let time = get_visited_time(f).unwrap_or("0".to_owned());
+        let query = format!(
+            "SELECT DISTINCT c.* FROM customer c 
+                    JOIN appointment a ON a.salesman = c.salesman 
+                        AND a.customer = c.id AND a.status = 1 
+                            AND a.finish_time >= '{time}' WHERE is_share = 0 AND c.{status}"
+        );
+        conn.query_map(query, |f| f)
+    }
+}
+/// 查询我的客户信息
+fn qm_customers(f: &Info, id: &str, status: String, conn: &mut PooledConn) -> VecCustomer {
+    if let Some(filter) = gen_filter(f, &status) {
+        let query = query_statement(format!("salesman = '{}' AND {}", id, filter));
+        conn.query_map(query, |f| f)
+    } else {
+        let time = get_visited_time(f).unwrap_or("0".to_owned());
+        let query = format!(
+            "SELECT DISTINCT c.* FROM customer c 
+                JOIN appointment a ON a.salesman = c.salesman 
+                    AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}' 
+                        WHERE c.salesman = '{id}' AND c.{status}"
+        );
+        conn.query_map(query, |f| f)
+    }
+}
+/// 查询指定部门的客户信息
+fn qc_with_d(f: &Info, d: &str, status: String, conn: &mut PooledConn) -> VecCustomer {
+    if let Some(filter) = gen_filter(f, &status) {
+        let query = format!(
+            "SELECT c.* FROM customer c JOIN user u ON u.id = c.salesman AND u.department = '{}' 
+                WHERE {filter}",
+            d
+        );
+        conn.query_map(query, |f| f)
+    } else {
+        let time = get_visited_time(f).unwrap_or("0".to_owned());
+        let query = format!(
+            "SELECT DISTINCT c.* FROM customer c 
+                JOIN user u ON u.id = c.salesman AND u.department = '{d}'
+                JOIN appointment a ON a.salesman = c.salesman 
+                    AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}' 
+                        WHERE c.{status}"
+        );
+        conn.query_map(query, |f| f)
+    }
+}
+use super::CUSTOMER_FIELDS;
+fn get_visited_time(f: &Info) -> Option<String> {
+    let now = TIME::now().ok()?;
+    let local = chrono::Local.timestamp_nanos(now.naos() as i64);
+    let n = match FilterType::from(f.info.as_str()) {
+        FilterType::VISITED_TODAY => 0,
+        FilterType::VISITED_THREE_DAYS_AGO => 3,
+        FilterType::VISITED_WEEK_AGO => 7,
+        FilterType::VISITED_HALF_MONTH_AGO => 15,
+        FilterType::VISITED_MONTH_AGO => 30,
+        _ => unreachable!(),
+    };
+    local
+        .checked_add_days(Days::new(n))
+        .map(|t| TIME::from(t).format(TimeFormat::YYYYMMDD))
+}
+/// 生成一些类同的过滤条件
+fn gen_filter(f: &Info, status: &str) -> Option<String> {
+    let filter = if f.ty == 0 {
+        let now = TIME::now().unwrap();
+        let local = chrono::Local.timestamp_nanos(now.naos() as i64);
+        match FilterType::from(f.info.as_str()) {
+            FilterType::UNCATEGORIZED => format!("ty = '' AND {}", status),
+            FilterType::ALL => status.to_owned(),
+            FilterType::TODAY_FOLLOW_UP_VISIT => {
+                format!(
+                    "next_visit_time > '{}' AND {}",
+                    now.format(TimeFormat::YYYYMMDD),
+                    status
+                )
+            }
+            FilterType::ADDED_TODAY => format!(
+                "create_time > '{}' AND {status}",
+                now.format(TimeFormat::YYYYMMDD)
+            ),
+            FilterType::ADDED_WEEK_AGO => {
+                let week = local.checked_sub_days(Days::new(7)).unwrap();
+                let time = TIME::from(week);
+                format!(
+                    "create_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::ADDED_HALF_MONTH_AGO => {
+                let half_of_month = local.checked_sub_days(Days::new(15)).unwrap();
+                let time = TIME::from(half_of_month);
+                format!(
+                    "create_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::ADDED_MONTH_AGO => {
+                let month = local.checked_add_months(Months::new(1)).unwrap();
+                let time = TIME::from(month);
+                format!(
+                    "create_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            // TODO: 拜访时间的筛选无法在这里完成
+            // FilterType::VISITED_TODAY => {
 
-fn query_share_customers(filter: &Info) -> mysql::Result<Vec<(Vec<FixedCustomerInfos>, String)>> {
-    todo!()
+            // }
+            // FilterTy::VISITED_THREE_DAYS_AGO => todo!(),
+            // FilterTy::VISITED_WEEK_AGO => todo!(),
+            // FilterTy::VISITED_HALF_MONTH_AGO => todo!(),
+            // FilterTy::VISITED_MONTH_AGO => todo!(),
+            _ => return None,
+        }
+    } else {
+        format!("ty = '{}' AND {}", f.info, status)
+    };
+    Some(filter)
 }
-fn query_my_customers(
-    filter: &Info,
-    id: &str,
-) -> mysql::Result<Vec<(Vec<FixedCustomerInfos>, String)>> {
-    todo!()
-}
-fn query_department_customers(
-    filter: &Info,
-    department: &str,
-) -> mysql::Result<Vec<(Vec<FixedCustomerInfos>, String)>> {
-    todo!()
+fn query_statement(f: impl Display) -> String {
+    format!("SELECT DISTINCT {CUSTOMER_FIELDS} FROM customer WHERE {f}")
 }

@@ -20,7 +20,7 @@ pub async fn root_register_all(Json(value): Json<Value>) -> ResponseResult {
             data.id,
             data.name,
             data.permissions.unwrap(),
-            data.department.unwrap(),
+            if data.identity > 0 { data.department.unwrap()} else {"NULL".to_string()},
             data.identity,
             data.sex
         ),

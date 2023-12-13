@@ -58,13 +58,13 @@ use table::Table;
 use crate::{pages::DataOptions, Response};
 pub fn create_table() -> Result<()> {
     let mut conn = get_conn()?;
-    conn.query_drop(Table::USER_TABLE)?;
-    // 设置token黑名单明个
-    conn.query_drop(Table::TOKEN)?;
     // 创建下拉框选项的表格
     for value in DataOptions::first() {
         conn.query_drop(value.table_statement())?;
     }
+    conn.query_drop(Table::USER_TABLE)?;
+    // 设置token黑名单明个
+    conn.query_drop(Table::TOKEN)?;
     conn.query_drop(
         "INSERT IGNORE INTO payment (value, create_time) VALUES 
             ('现金', '0000-00-00 00:00:00'), 

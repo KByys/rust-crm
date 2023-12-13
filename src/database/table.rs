@@ -9,11 +9,12 @@ impl Table {
             id VARCHAR(15) NOT NULL,
             name VARCHAR(20) NOT NULL,
             password BINARY(16) NOT NULL,
-            department VARCHAR(15) NULL,
+            department VARCHAR(30) NULL,
             permissions INT NOT NULL,
             identity INT NOT NULL,
             sex INT NOT NULL,
-            PRIMARY KEY (id)
+            PRIMARY KEY (id),
+            FOREIGN KEY (department) REFERENCES department(value)
         )
     ";
     /// 客户数据

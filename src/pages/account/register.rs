@@ -82,7 +82,7 @@ fn register_common_user(conn: &mut PooledConn, info: &User) -> ResponseResult {
     let depart = if let Some(depart) = &info.department {
         depart
     } else {
-        return Err(Response::invalid_value("权限组为空值"));
+        return Err(Response::invalid_value("部门为空值"));
     };
     let perm = if let Some(perm) = info.permissions {
         perm.to_string()

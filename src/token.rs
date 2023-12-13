@@ -6,10 +6,7 @@ use jwt::{Header, SignWithKey, Token, VerifyWithKey};
 use mysql::{prelude::Queryable, PooledConn};
 use sha2::Sha512;
 
-use crate::libs::{
-    headers::Bearer,
-    time::TIME,
-};
+use crate::libs::{headers::Bearer, time::TIME};
 /// 从请求头中获取token
 #[macro_export]
 macro_rules! bearer {
@@ -19,6 +16,7 @@ macro_rules! bearer {
             Ok(bearer) => Some(bearer),
             Err(e) => match e {
                 $crate::libs::headers::HeaderParserError::MissingHeaderValue(_) => None,
+                $crate::libs::headers::HeaderParserError::InvalidValue(_) => None,
                 _ => return Err($crate::response::Response::token_error(e)),
             },
         }
@@ -121,23 +119,22 @@ macro_rules! parse_jwt_macro {
             }
             _ => return Err($crate::Response::token_error("Invalid Token")),
         }
-    };
-    // 允许token过期
-    // ($bearer:expr, $conn:expr, $sub:expr => Allow Expired) => {
-    //     match $crate::token::parse_jwt($bearer) {
-    //         Some(jwt) => {
-    //             if jwt.sub == $sub && {
-    //                 let ver = jwt.verify($conn)?;
-    //                 ver.is_ok() || ver.is_expired()
-    //             } {
-    //                 jwt.id
-    //             } else {
-    //                 return Err($crate::Response::token_error("Invalid Token"));
-    //             }
-    //         }
-    //         _ => return Err($crate::Response::token_error("Invalid Token")),
-    //     }
-    // };
+    }; // 允许token过期
+       // ($bearer:expr, $conn:expr, $sub:expr => Allow Expired) => {
+       //     match $crate::token::parse_jwt($bearer) {
+       //         Some(jwt) => {
+       //             if jwt.sub == $sub && {
+       //                 let ver = jwt.verify($conn)?;
+       //                 ver.is_ok() || ver.is_expired()
+       //             } {
+       //                 jwt.id
+       //             } else {
+       //                 return Err($crate::Response::token_error("Invalid Token"));
+       //             }
+       //         }
+       //         _ => return Err($crate::Response::token_error("Invalid Token")),
+       //     }
+       // };
 }
 
 pub fn parse_jwt(bearer: &Bearer) -> Option<JWToken> {

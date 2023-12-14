@@ -160,8 +160,14 @@ fn sort(data: &mut [FCInfos], sort: usize) {
             2 => v1.create_time.cmp(&v2.create_time),
             // 下次预约时间
             3 => v1.next_visit_time.cmp(&v2.next_visit_time),
-            4 => todo!(),
-            5 => todo!(),
+            // 拜访次数
+            4 => v2.visited_count.cmp(&v1.visited_count),
+            // 最近拜访
+            5 => v2.last_visited_time.cmp(&v1.last_visited_time),
+            // 久未联系
+            6 => v1.last_visited_time.cmp(&v2.last_visited_time),
+            // 成交时间
+            7 => v1.last_transaction_time.cmp(&v2.last_transaction_time),
             _ => std::cmp::Ordering::Equal,
         }
     })
@@ -245,7 +251,7 @@ fn qc_with_d(f: &Info, d: &str, status: &str, conn: &mut PooledConn) -> VecCusto
     //     conn.query_map(query, |f| f)
     // }
 }
-use super::CUSTOMER_FIELDS;
+// use super::CUSTOMER_FIELDS;
 // fn get_visited_time(f: &Info) -> Option<String> {
 //     let now = TIME::now().ok()?;
 //     let local = chrono::Local.timestamp_nanos(now.naos() as i64);
@@ -348,5 +354,5 @@ fn gen_filter(f: &Info, status: &str) -> String {
     }
 }
 fn query_statement(f: impl Display) -> String {
-    format!("SELECT DISTINCT {CUSTOMER_FIELDS} FROM customer WHERE {f}")
+    format!("SELECT DISTINCT * FROM customer WHERE {f}")
 }

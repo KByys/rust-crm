@@ -1,6 +1,7 @@
 use chrono::prelude::TimeZone;
 use crm_rust::libs::time::*;
 fn main() {
-    let time = TIME::now().unwrap();
-    println!("{}", time.format(TimeFormat::YYYYMMDD) < time.format(TimeFormat::YYYYMMDD_HHMMSS))
+    let ch = Some(34);
+    let df: Option<i32>=  None;
+    println!("{}", ch > df);
 }

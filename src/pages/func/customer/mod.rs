@@ -54,6 +54,15 @@ pub struct FCInfos {
     pub status: String,
     pub source: String,
     pub role: String,
+    #[serde(skip_deserializing)]
+    #[serde(skip_serializing)]
+    pub last_visited_time: Option<String>,
+    #[serde(skip_deserializing)]
+    #[serde(skip_serializing)]
+    pub visited_count: i32,
+    #[serde(skip_deserializing)]
+    #[serde(skip_serializing)]
+    pub last_transition_time: Option<String>,
 }
 /// 自定义的客户信息
 #[derive(serde::Serialize, serde::Deserialize, Default)]

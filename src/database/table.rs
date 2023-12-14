@@ -18,6 +18,9 @@ impl Table {
         )
     ";
     /// 客户数据
+    /// 上次拜访时间 last_visited_time
+    /// 拜访次数 visited_count
+    /// 上次成交时间 last_transaction_time
     pub const CUSTOMER_TABLE: &str = "CREATE TABLE IF NOT EXISTS customer(
             id VARCHAR(15) NOT NULL,
             name VARCHAR(20) NOT NULL,
@@ -40,6 +43,9 @@ impl Table {
             status VARCHAR(30),
             source VARCHAR(30),
             role VARCHAR(30),
+            last_visited_time VARCHAR(25) NULL,
+            visited_count INT NOT NULL,
+            last_transaction_time VARCHAR(25) NULL,
             PRIMARY KEY (id),
             FOREIGN KEY (salesman) REFERENCES user(id)
         )

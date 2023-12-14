@@ -35,8 +35,8 @@ fn _insert(conn: &mut PooledConn, data: &Customer) -> Result<(), Response> {
     let fixed_infos = &data.fixed_infos;
     let create_time = TIME::now().unwrap().format(TimeFormat::YYYYMMDD_HHMMSS);
     conn.query_drop(format!(
-        "INSERT INTO customer ({CUSTOMER_FIELDS}) VALUES (
-        '{}', '{}', '{}', {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{create_time}', '{}', '{}', '{}', '{}', '{}')",
+        "INSERT INTO customer ({CUSTOMER_FIELDS}, visited_count) VALUES (
+        '{}', '{}', '{}', {}, {}, '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{}', '{create_time}', '{}', '{}', '{}', '{}', '{}', 0)",
         fixed_infos.id,
         fixed_infos.name,
         fixed_infos.company,

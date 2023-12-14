@@ -58,7 +58,6 @@ impl From<&str> for FilterType {
     }
 }
 
-
 #[derive(serde::Deserialize)]
 struct Info {
     ty: usize,
@@ -133,15 +132,15 @@ fn query_all_customers_infos(
         _ => "status = ''".to_string(),
     };
     let mut customers = match data.scope.ty {
-        0 => qm_customers(&data.filter, &id, status, conn)?,
-        1 => qs_customers(&data.filter, status, conn)?,
+        0 => qm_customers(&data.filter, &id, &status, conn)?,
+        1 => qs_customers(&data.filter, &status, conn)?,
         2 => {
             let depart = match Identity::new(&id, conn)? {
                 Identity::Boss => data.scope.info.clone(),
                 Identity::Administrator(_, depart) => depart,
                 _ => return Err(Response::permission_denied()),
             };
-            qc_with_d(&data.filter, &depart, status, conn)?
+            qc_with_d(&data.filter, &depart, &status, conn)?
         }
         ty => return Err(Response::invalid_value(format!("scope的ty: {} 非法", ty))),
     };
@@ -191,76 +190,80 @@ fn get_custom_infos(data: Vec<FCInfos>, conn: &mut PooledConn) -> mysql::Result<
 }
 type VecCustomer = mysql::Result<Vec<FCInfos>>;
 /// 查询共享的客户信息
-fn qs_customers(f: &Info, status: String, conn: &mut PooledConn) -> VecCustomer {
-    if let Some(filter) = gen_filter(f, &status) {
-        conn.query_map(query_statement(format!("is_share = 0 AND {filter}")), |f| f)
-    } else {
-        let time = get_visited_time(f).unwrap_or("0".to_owned());
-        let query = format!(
-            "SELECT DISTINCT c.* FROM customer c 
-                    JOIN appointment a ON a.salesman = c.salesman 
-                        AND a.customer = c.id AND a.status = 1 
-                            AND a.finish_time >= '{time}' WHERE is_share = 0 AND c.{status}"
-        );
-        conn.query_map(query, |f| f)
-    }
+fn qs_customers(f: &Info, status: &str, conn: &mut PooledConn) -> VecCustomer {
+    // if let Some(filter) = gen_filter(f, &status) {
+    conn.query_map(
+        query_statement(format!("is_share = 0 AND {}", gen_filter(f, status))),
+        |f| f,
+    )
+    // } else {
+    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
+    //     let query = format!(
+    //         "SELECT DISTINCT c.* FROM customer c
+    //                 JOIN appointment a ON a.salesman = c.salesman
+    //                     AND a.customer = c.id AND a.status = 1
+    //                         AND a.finish_time >= '{time}' WHERE is_share = 0 AND c.{status}"
+    //     );
+    //     conn.query_map(query, |f| f)
+    // }
 }
 /// 查询我的客户信息
-fn qm_customers(f: &Info, id: &str, status: String, conn: &mut PooledConn) -> VecCustomer {
-    if let Some(filter) = gen_filter(f, &status) {
-        let query = query_statement(format!("salesman = '{}' AND {}", id, filter));
-        conn.query_map(query, |f| f)
-    } else {
-        let time = get_visited_time(f).unwrap_or("0".to_owned());
-        let query = format!(
-            "SELECT DISTINCT c.* FROM customer c 
-                JOIN appointment a ON a.salesman = c.salesman 
-                    AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}' 
-                        WHERE c.salesman = '{id}' AND c.{status}"
-        );
-        conn.query_map(query, |f| f)
-    }
+fn qm_customers(f: &Info, id: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
+    // if let Some(filter) = gen_filter(f, &status) {
+    let query = query_statement(format!("salesman = '{}' AND {}", id, gen_filter(f, status)));
+    conn.query_map(query, |f| f)
+    // } else {
+    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
+    //     let query = format!(
+    //         "SELECT DISTINCT c.* FROM customer c
+    //             JOIN appointment a ON a.salesman = c.salesman
+    //                 AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}'
+    //                     WHERE c.salesman = '{id}' AND c.{status}"
+    //     );
+    //     conn.query_map(query, |f| f)
+    // }
 }
 /// 查询指定部门的客户信息
-fn qc_with_d(f: &Info, d: &str, status: String, conn: &mut PooledConn) -> VecCustomer {
-    if let Some(filter) = gen_filter(f, &status) {
-        let query = format!(
-            "SELECT c.* FROM customer c JOIN user u ON u.id = c.salesman AND u.department = '{}' 
-                WHERE {filter}",
-            d
-        );
-        conn.query_map(query, |f| f)
-    } else {
-        let time = get_visited_time(f).unwrap_or("0".to_owned());
-        let query = format!(
-            "SELECT DISTINCT c.* FROM customer c 
-                JOIN user u ON u.id = c.salesman AND u.department = '{d}'
-                JOIN appointment a ON a.salesman = c.salesman 
-                    AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}' 
-                        WHERE c.{status}"
-        );
-        conn.query_map(query, |f| f)
-    }
+fn qc_with_d(f: &Info, d: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
+    // if let Some(filter) = gen_filter(f, &status) {
+    let query = format!(
+        "SELECT c.* FROM customer c JOIN user u ON u.id = c.salesman AND u.department = '{}' 
+                WHERE {}",
+        d,
+        gen_filter(f, status)
+    );
+    conn.query_map(query, |f| f)
+    // } else {
+    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
+    //     let query = format!(
+    //         "SELECT DISTINCT c.* FROM customer c
+    //             JOIN user u ON u.id = c.salesman AND u.department = '{d}'
+    //             JOIN appointment a ON a.salesman = c.salesman
+    //                 AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}'
+    //                     WHERE c.{status}"
+    //     );
+    //     conn.query_map(query, |f| f)
+    // }
 }
 use super::CUSTOMER_FIELDS;
-fn get_visited_time(f: &Info) -> Option<String> {
-    let now = TIME::now().ok()?;
-    let local = chrono::Local.timestamp_nanos(now.naos() as i64);
-    let n = match FilterType::from(f.info.as_str()) {
-        FilterType::VISITED_TODAY => 0,
-        FilterType::VISITED_THREE_DAYS_AGO => 3,
-        FilterType::VISITED_WEEK_AGO => 7,
-        FilterType::VISITED_HALF_MONTH_AGO => 15,
-        FilterType::VISITED_MONTH_AGO => 30,
-        _ => unreachable!(),
-    };
-    local
-        .checked_add_days(Days::new(n))
-        .map(|t| TIME::from(t).format(TimeFormat::YYYYMMDD))
-}
+// fn get_visited_time(f: &Info) -> Option<String> {
+//     let now = TIME::now().ok()?;
+//     let local = chrono::Local.timestamp_nanos(now.naos() as i64);
+//     let n = match FilterType::from(f.info.as_str()) {
+//         FilterType::VISITED_TODAY => 0,
+//         FilterType::VISITED_THREE_DAYS_AGO => 3,
+//         FilterType::VISITED_WEEK_AGO => 7,
+//         FilterType::VISITED_HALF_MONTH_AGO => 15,
+//         FilterType::VISITED_MONTH_AGO => 30,
+//         _ => unreachable!(),
+//     };
+//     local
+//         .checked_add_days(Days::new(n))
+//         .map(|t| TIME::from(t).format(TimeFormat::YYYYMMDD))
+// }
 /// 生成一些类同的过滤条件
-fn gen_filter(f: &Info, status: &str) -> Option<String> {
-    let filter = if f.ty == 0 {
+fn gen_filter(f: &Info, status: &str) -> String {
+    if f.ty == 0 {
         let now = TIME::now().unwrap();
         let local = chrono::Local.timestamp_nanos(now.naos() as i64);
         match FilterType::from(f.info.as_str()) {
@@ -301,20 +304,48 @@ fn gen_filter(f: &Info, status: &str) -> Option<String> {
                     time.format(TimeFormat::YYYYMMDD)
                 )
             }
-            // TODO: 拜访时间的筛选无法在这里完成
-            // FilterType::VISITED_TODAY => {
-
-            // }
-            // FilterTy::VISITED_THREE_DAYS_AGO => todo!(),
-            // FilterTy::VISITED_WEEK_AGO => todo!(),
-            // FilterTy::VISITED_HALF_MONTH_AGO => todo!(),
-            // FilterTy::VISITED_MONTH_AGO => todo!(),
-            _ => return None,
+            FilterType::VISITED_TODAY => {
+                format!(
+                    "last_visited_time > '{}' AND {status}",
+                    now.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::VISITED_THREE_DAYS_AGO => {
+                let three_days_ao = local.checked_sub_days(Days::new(3)).unwrap();
+                let time = TIME::from(three_days_ao);
+                format!(
+                    "last_visited_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::VISITED_WEEK_AGO => {
+                let week = local.checked_sub_days(Days::new(7)).unwrap();
+                let time = TIME::from(week);
+                format!(
+                    "last_visited_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::VISITED_HALF_MONTH_AGO => {
+                let half_of_month = local.checked_sub_days(Days::new(15)).unwrap();
+                let time = TIME::from(half_of_month);
+                format!(
+                    "last_visited_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
+            FilterType::VISITED_MONTH_AGO => {
+                let month = local.checked_add_months(Months::new(1)).unwrap();
+                let time = TIME::from(month);
+                format!(
+                    "last_visited_time >= '{}' AND {status}",
+                    time.format(TimeFormat::YYYYMMDD)
+                )
+            }
         }
     } else {
         format!("ty = '{}' AND {}", f.info, status)
-    };
-    Some(filter)
+    }
 }
 fn query_statement(f: impl Display) -> String {
     format!("SELECT DISTINCT {CUSTOMER_FIELDS} FROM customer WHERE {f}")

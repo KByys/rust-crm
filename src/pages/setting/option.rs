@@ -153,7 +153,7 @@ pub async fn insert_options(headers: HeaderMap, Json(value): Json<Value>) -> Res
     }
     let opt = DataOptions::from(info.ty);
     conn.query_drop(format!(
-        "INSERT IGNORE INTO {} (value, create_time) VALUES ({}, {})",
+        "INSERT IGNORE INTO {} (value, create_time) VALUES ('{}', '{}')",
         opt.table_name(),
         info.info.value,
         time.format(crate::libs::time::TimeFormat::YYYYMMDD_HHMMSS)

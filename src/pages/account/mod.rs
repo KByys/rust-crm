@@ -23,9 +23,9 @@ pub struct User {
     #[serde(skip_deserializing)]
     password: Vec<u8>,
     #[serde(default)]
-    permissions: Option<usize>,
+    permissions: usize,
     #[serde(default)]
-    department: Option<String>,
+    department: String,
     identity: usize,
     #[serde(deserialize_with = "deserialize_bool_to_i32")]
     #[serde(serialize_with = "serialize_i32_to_bool")]

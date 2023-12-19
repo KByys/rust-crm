@@ -83,6 +83,15 @@ impl Response {
     pub fn invalid_value(e: impl Display) -> Self {
         Self::new(StatusCode::OK, 7, json!(e.to_string()))
     }
+    /// 条件不满足
+    pub fn dissatisfy(e: impl Display) -> Self {
+        Self::new(StatusCode::OK, 8, json!(e.to_string()))
+    }
+
+    /// 不应该发生的错误
+    pub fn unknown_err(e: impl Display) -> Self {
+        Self::new(StatusCode::OK, 9, json!(e.to_string()))
+    }
     pub fn code(&self) -> StatusCode {
         self.code
     }

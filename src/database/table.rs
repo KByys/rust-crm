@@ -9,7 +9,7 @@ impl Table {
             id VARCHAR(15) NOT NULL,
             name VARCHAR(20) NOT NULL,
             password BINARY(16) NOT NULL,
-            department VARCHAR(30) NULL,
+            department VARCHAR(30) NOT NULL,
             permissions INT NOT NULL,
             identity INT NOT NULL,
             sex INT NOT NULL,
@@ -21,6 +21,9 @@ impl Table {
     /// 上次拜访时间 last_visited_time
     /// 拜访次数 visited_count
     /// 上次成交时间 last_transaction_time
+    /// scope, 0 个人客户， 1 部门公海，2 公司公海
+    /// push_to_sea_date 放入公海的日期，YYYY-MM-DD HH:MM
+    /// pop_from_sea_date 离开公海的日期，
     pub const CUSTOMER_TABLE: &str = "CREATE TABLE IF NOT EXISTS customer(
             id VARCHAR(15) NOT NULL,
             name VARCHAR(20) NOT NULL,
@@ -46,6 +49,9 @@ impl Table {
             last_visited_time VARCHAR(25) NULL,
             visited_count INT NOT NULL,
             last_transaction_time VARCHAR(25) NULL,
+            scope INT NOT NULL,
+            push_to_sea_date VARCHAR(25) NULL,
+            pop_from_sea_date VARCHAR(25) NULL,
             PRIMARY KEY (id),
             FOREIGN KEY (salesman) REFERENCES user(id)
         )

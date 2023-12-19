@@ -8,10 +8,6 @@ struct Test {
 }
 
 fn main() -> mysql::Result<()> {
-    let mut conn = get_conn()?;
-    let sd: Test = conn.query_first("SELECT * FROM test1")?.unwrap();
-    println!(
-        "{:?}", sd
-    );
+    std::fs::write("te/good", b"Hello, world!")?;
     Ok(())
 }

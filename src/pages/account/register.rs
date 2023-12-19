@@ -19,8 +19,12 @@ pub async fn root_register_all(Json(value): Json<Value>) -> ResponseResult {
         VALUES ('{}', '{}', '{}', {}, '{}', '{}', :psw)",
             data.id,
             data.name,
-            data.permissions.unwrap(),
-            if data.identity > 0 { format!("'{}'", data.department.unwrap())} else {"NULL".to_string()},
+            data.permissions,
+            if data.identity > 0 {
+                format!("'{}'", data.department)
+            } else {
+                "'总经办'".to_string()
+            },
             data.identity,
             data.sex
         ),
@@ -60,7 +64,7 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     }
 }
 #[inline]
-fn insert_statement(user: &User, department: &str, perm: &str) -> String {
+fn insert_statement(user: &User, department: &str, perm: usize) -> String {
     format!(
         "INSERT INTO user (id, name, password, department, permissions, identity, sex) 
             VALUES('{}', '{}', :password, '{}', '{}', '{}', '{}')",
@@ -71,7 +75,7 @@ fn insert_statement(user: &User, department: &str, perm: &str) -> String {
 fn register_root_user(conn: &mut PooledConn, info: &User) -> ResponseResult {
     let digest = md5::compute("12345678");
     conn.exec_drop(
-        insert_statement(info, "NULL", "NULL"),
+        insert_statement(info, "总经办", 0),
         params! {"password" => digest.0 },
     )?;
     Ok(Response::empty())
@@ -79,19 +83,13 @@ fn register_root_user(conn: &mut PooledConn, info: &User) -> ResponseResult {
 
 fn register_common_user(conn: &mut PooledConn, info: &User) -> ResponseResult {
     let digest = md5::compute("12345678");
-    let depart = if let Some(depart) = &info.department {
-        depart
-    } else {
-        return Err(Response::invalid_value("部门为空值"));
-    };
-    let perm = if let Some(perm) = info.permissions {
-        perm.to_string()
-    } else {
-        return Err(Response::invalid_value("权限组为空值"));
-    };
-
+    if info.department.as_str() == "总经办" {
+        return Err(Response::invalid_value(
+            "'总经办' 这个部门只允许最高权限者加入",
+        ));
+    }
     conn.exec_drop(
-        insert_statement(info, depart, &perm),
+        insert_statement(info, &info.department, info.permissions),
         params! {"password" => digest.0 },
     )?;
     Ok(Response::empty())
@@ -103,22 +101,12 @@ fn register_common_user_with_depart(
     department: &str,
 ) -> ResponseResult {
     let digest = md5::compute("12345678");
-    let depart = if let Some(depart) = &info.department {
-        if depart != department {
-            return Err(Response::permission_denied());
-        }
-        depart
-    } else {
-        return Err(Response::invalid_value("权限组为空值"));
-    };
-    let perm = if let Some(perm) = info.permissions {
-        perm.to_string()
-    } else {
-        return Err(Response::invalid_value("权限组为空值"));
-    };
+    if info.department.as_str() != department {
+        return Err(Response::permission_denied());
+    }
 
     conn.exec_drop(
-        insert_statement(info, depart, &perm),
+        insert_statement(info, department, info.permissions),
         params! {"password" => digest.0 },
     )?;
     Ok(Response::empty())

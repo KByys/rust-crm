@@ -27,7 +27,12 @@ pub fn catch_some_mysql_error(code: u16, msg: impl Display, err: mysql::Error) -
     }
 }
 /// 成功提交，失败回滚
-pub fn c_or_r<F, T>(f: F, conn: &mut PooledConn, param: T, start_check: bool) -> Result<(), Response>
+pub fn c_or_r<F, T>(
+    f: F,
+    conn: &mut PooledConn,
+    param: T,
+    start_check: bool,
+) -> Result<(), Response>
 where
     F: Fn(&mut PooledConn, T) -> Result<(), Response>,
 {
@@ -49,19 +54,18 @@ where
 
 /// 连接数据库
 pub fn get_conn() -> Result<PooledConn> {
-    let url = std::fs::read_to_string("database")?;
-    Pool::new(url.trim())?.get_conn()
+    unsafe { Pool::new(MYSQL_URI.as_str())?.get_conn() }
 }
-
 use table::Table;
 
-use crate::{pages::DataOptions, Response};
+use crate::{pages::DataOptions, Response, MYSQL_URI};
 pub fn create_table() -> Result<()> {
     let mut conn = get_conn()?;
     // 创建下拉框选项的表格
     for value in DataOptions::first() {
         conn.query_drop(value.table_statement())?;
     }
+    conn.query_drop("INSERT IGNORE INTO department VALUES ('总经办', '0000-00-00 00:00:00')")?;
     conn.query_drop(Table::USER_TABLE)?;
     // 设置token黑名单明个
     conn.query_drop(Table::TOKEN)?;

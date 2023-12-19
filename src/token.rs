@@ -108,6 +108,24 @@ impl JWToken {
 }
 #[macro_export]
 macro_rules! parse_jwt_macro {
+    // 解析token，从中获取id信息, 同时验证权限，仅最高权限者可通过
+    ($bearer:expr, $conn:expr) => {{
+        match $crate::token::parse_jwt($bearer) {
+            Some(jwt) => {
+                if jwt.sub && jwt.verify($conn)?.is_ok() {
+                    use $crate::libs::perm::Identity;
+                    match Identity::new(&jwt.id, $conn)? {
+                        Identity::Boss => jwt.id,
+                        _ => return Err(Response::permission_denied()),
+                    }
+                } else {
+                    return Err($crate::Response::token_error("Invalid Token"));
+                }
+            }
+            _ => return Err($crate::Response::token_error("Invalid Token")),
+        }
+    }};
+    // 解析token，从中获取id信息
     ($bearer:expr, $conn:expr => $sub:expr) => {
         match $crate::token::parse_jwt($bearer) {
             Some(jwt) => {
@@ -119,22 +137,7 @@ macro_rules! parse_jwt_macro {
             }
             _ => return Err($crate::Response::token_error("Invalid Token")),
         }
-    }; // 允许token过期
-       // ($bearer:expr, $conn:expr, $sub:expr => Allow Expired) => {
-       //     match $crate::token::parse_jwt($bearer) {
-       //         Some(jwt) => {
-       //             if jwt.sub == $sub && {
-       //                 let ver = jwt.verify($conn)?;
-       //                 ver.is_ok() || ver.is_expired()
-       //             } {
-       //                 jwt.id
-       //             } else {
-       //                 return Err($crate::Response::token_error("Invalid Token"));
-       //             }
-       //         }
-       //         _ => return Err($crate::Response::token_error("Invalid Token")),
-       //     }
-       // };
+    };
 }
 
 pub fn parse_jwt(bearer: &Bearer) -> Option<JWToken> {

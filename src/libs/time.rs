@@ -66,7 +66,7 @@ impl TIME {
     }
     pub fn format(&self, fmt: TimeFormat) -> String {
         match fmt {
-            TimeFormat::HHMMSS => format!("{}:{}:{}", self.hour, self.minute, self.second),
+            TimeFormat::HHMMSS => format!("{:2>0}:{:2>0}:{:2>0}", self.hour, self.minute, self.second),
             TimeFormat::YYYYMMDD => format!("{}-{}-{}", self.year, self.month, self.day),
             TimeFormat::YYYYMMDD_HHMM => format!(
                 "{}-{}-{} {}:{}",

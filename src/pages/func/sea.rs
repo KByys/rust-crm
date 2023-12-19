@@ -157,7 +157,7 @@ fn query(conn: &mut PooledConn, data: &Sea, d: &str) -> mysql::Result<Vec<SeaInf
 
 fn get_all(conn: &mut PooledConn) -> mysql::Result<Vec<SeaInfo>> {
     conn.query_map(
-        format!("SELECT name, company, ty, id, push_to_sea_date FROM customer WHERE scope = 2"),
+        "SELECT name, company, ty, id, push_to_sea_date FROM customer WHERE scope = 2",
         |s| s,
     )
 }

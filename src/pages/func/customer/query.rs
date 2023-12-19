@@ -197,41 +197,18 @@ fn get_custom_infos(data: Vec<FCInfos>, conn: &mut PooledConn) -> mysql::Result<
 type VecCustomer = mysql::Result<Vec<FCInfos>>;
 /// 查询共享的客户信息
 fn qs_customers(f: &Info, status: &str, conn: &mut PooledConn) -> VecCustomer {
-    // if let Some(filter) = gen_filter(f, &status) {
     conn.query_map(
         query_statement(format!("is_share = 0 AND {}", gen_filter(f, status))),
         |f| f,
     )
-    // } else {
-    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
-    //     let query = format!(
-    //         "SELECT DISTINCT c.* FROM customer c
-    //                 JOIN appointment a ON a.salesman = c.salesman
-    //                     AND a.customer = c.id AND a.status = 1
-    //                         AND a.finish_time >= '{time}' WHERE is_share = 0 AND c.{status}"
-    //     );
-    //     conn.query_map(query, |f| f)
-    // }
 }
 /// 查询我的客户信息
 fn qm_customers(f: &Info, id: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
-    // if let Some(filter) = gen_filter(f, &status) {
     let query = query_statement(format!("salesman = '{}' AND {}", id, gen_filter(f, status)));
     conn.query_map(query, |f| f)
-    // } else {
-    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
-    //     let query = format!(
-    //         "SELECT DISTINCT c.* FROM customer c
-    //             JOIN appointment a ON a.salesman = c.salesman
-    //                 AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}'
-    //                     WHERE c.salesman = '{id}' AND c.{status}"
-    //     );
-    //     conn.query_map(query, |f| f)
-    // }
 }
 /// 查询指定部门的客户信息
 fn qc_with_d(f: &Info, d: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
-    // if let Some(filter) = gen_filter(f, &status) {
     let query = format!(
         "SELECT c.* FROM customer c JOIN user u ON u.id = c.salesman AND u.department = '{}' 
                 WHERE {}",
@@ -239,37 +216,10 @@ fn qc_with_d(f: &Info, d: &str, status: &str, conn: &mut PooledConn) -> VecCusto
         gen_filter(f, status)
     );
     conn.query_map(query, |f| f)
-    // } else {
-    //     let time = get_visited_time(f).unwrap_or("0".to_owned());
-    //     let query = format!(
-    //         "SELECT DISTINCT c.* FROM customer c
-    //             JOIN user u ON u.id = c.salesman AND u.department = '{d}'
-    //             JOIN appointment a ON a.salesman = c.salesman
-    //                 AND a.customer = c.id AND a.status = 1 AND a.finish_time >= '{time}'
-    //                     WHERE c.{status}"
-    //     );
-    //     conn.query_map(query, |f| f)
-    // }
 }
-// use super::CUSTOMER_FIELDS;
-// fn get_visited_time(f: &Info) -> Option<String> {
-//     let now = TIME::now().ok()?;
-//     let local = chrono::Local.timestamp_nanos(now.naos() as i64);
-//     let n = match FilterType::from(f.info.as_str()) {
-//         FilterType::VISITED_TODAY => 0,
-//         FilterType::VISITED_THREE_DAYS_AGO => 3,
-//         FilterType::VISITED_WEEK_AGO => 7,
-//         FilterType::VISITED_HALF_MONTH_AGO => 15,
-//         FilterType::VISITED_MONTH_AGO => 30,
-//         _ => unreachable!(),
-//     };
-//     local
-//         .checked_add_days(Days::new(n))
-//         .map(|t| TIME::from(t).format(TimeFormat::YYYYMMDD))
-// }
 /// 生成一些类同的过滤条件
 fn gen_filter(f: &Info, status: &str) -> String {
-    if f.ty == 0 {
+    let filter = if f.ty == 0 {
         let now = TIME::now().unwrap();
         let local = chrono::Local.timestamp_nanos(now.naos() as i64);
         match FilterType::from(f.info.as_str()) {
@@ -351,7 +301,8 @@ fn gen_filter(f: &Info, status: &str) -> String {
         }
     } else {
         format!("ty = '{}' AND {}", f.info, status)
-    }
+    };
+    format!("{} AND scope = 0", filter)
 }
 fn query_statement(f: impl Display) -> String {
     format!("SELECT DISTINCT * FROM customer WHERE {f}")

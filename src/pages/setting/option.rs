@@ -63,9 +63,10 @@ impl Iterator for DataOptions {
 
     fn next(&mut self) -> Option<Self::Item> {
         let n = *self as usize;
+        
         if n < Self::max() - 1 {
             *self = DataOptions::from(n + 1);
-            Some(*self)
+            Some(n.into())
         } else {
             None
         }

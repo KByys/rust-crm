@@ -1,4 +1,4 @@
-use axum::{http::HeaderMap, Json};
+use axum::{extract::Path, http::HeaderMap, Json};
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::{json, Value};
 
@@ -286,6 +286,41 @@ pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         table, data.value, data.display
     ))?;
     Ok(Response::empty())
+}
+
+pub async fn get_custom_info_with(Path(ty): Path<usize>) -> ResponseResult {
+    let mut conn = get_conn()?;
+    let query_values = |table, conn: &mut PooledConn| {
+        conn.query_map(
+            format!("SELECT value FROM {table} ORDER BY create_time"),
+            |value: String| value,
+        )
+    };
+    let text_infos = query_values(CUSTOM_FIELDS[ty][0], &mut conn)?;
+    let time_infos = query_values(CUSTOM_FIELDS[ty][1], &mut conn)?;
+    let _box_infos: Vec<_> = query_values(CUSTOM_FIELDS[ty][2], &mut conn)?;
+    let mut box_infos = Vec::new();
+    let table = CUSTOM_BOX_FIELDS[ty];
+    for text in _box_infos {
+        let t = conn.query_map(
+            format!(
+                "SELECT value FROM {table} WHERE display = '{}' ORDER BY create_time",
+                text
+            ),
+            |text: String| text,
+        )?;
+        box_infos.push(json!({
+            "display": text,
+            "values": t
+        }));
+    }
+    let value = json!({
+        "ty": ty,
+        "text_infos": text_infos,
+        "time_infos": time_infos,
+        "box_infos": box_infos
+    });
+    Ok(Response::ok(value))
 }
 
 pub async fn get_custom_info() -> ResponseResult {

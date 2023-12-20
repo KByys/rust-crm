@@ -31,5 +31,6 @@ pub fn setting_router() -> Router {
             "/customize/info/box/delete",
             delete(custom::delete_box_option),
         )
-        .route("/customize/info/infos", get(custom::get_custom_info))
+        .route("/customize/infos", get(custom::get_custom_info))
+        .route("/customize/info/get/:ty", get(custom::get_custom_info_with))
 }

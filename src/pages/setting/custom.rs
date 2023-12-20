@@ -13,7 +13,7 @@ use crate::{
     parse_jwt_macro, Response, ResponseResult,
 };
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 pub struct CustomInfos {
     ty: usize,
     display: String,
@@ -182,6 +182,7 @@ pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         id, value
     ));
     let data: CustomInfos = serde_json::from_value(value)?;
+    println!("{:#?}", data);
     CustomizeFieldType::new(&data.display)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));

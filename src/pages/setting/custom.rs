@@ -129,10 +129,8 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
                 .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
                 .collect();
             values.pop();
-            let query = format!(
-                "INSERT INTO {table} (display, id, value) VALUES {}",
-                values);
-                println!("{}", query);
+            let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
+            println!("{}", query);
             conn.query_drop(format!(
                 "INSERT INTO {table} (display, id, value) VALUES {}",
                 values
@@ -204,6 +202,10 @@ fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
         "UPDATE {table} SET value = '{}' WHERE value = '{}'",
         param.new_value, param.old_value
     ))?;
+    println!(
+        "UPDATE {table} SET value = '{}' WHERE value = '{}'",
+        param.new_value, param.old_value
+    );
     // 更新客户或产品对应的字段值
     let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
     conn.query_drop(format!(

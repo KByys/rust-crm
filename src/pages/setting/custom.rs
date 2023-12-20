@@ -112,10 +112,12 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
         ))?
         .is_some();
     if is_exist {
+        println!("444");
         return Ok(());
     }
+    println!("2222");
     conn.query_drop(format!(
-        "INSERT INTO {} (value, create_time) VALUES ('{}', '{}')",
+        "INSERT INTO {} ( value, create_time) VALUES ('{}', '{}')",
         table, param.value, create_time
     ))?;
     if param.ty == 0 {
@@ -123,10 +125,17 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
         let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
         let mut values: String = customers_id
             .iter()
-            .map(|id| format!("('{}', ''),", id))
+            .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
             .collect();
         values.pop();
-        conn.query_drop(format!("INSERT INTO {table} (id, value) VALUES {}", values))?;
+        let query = format!(
+            "INSERT INTO {table} (display, id, value) VALUES {}",
+            values);
+            println!("{}", query);
+        conn.query_drop(format!(
+            "INSERT INTO {table} (display, id, value) VALUES {}",
+            values
+        ))?;
     } else {
         // TODO
         todo!()

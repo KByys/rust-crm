@@ -5,7 +5,7 @@ use crm_rust::database::get_conn;
 use mysql::prelude::Queryable;
 #[tokio::main]
 async fn main() -> mysql::Result<()> {
-    let _var_name = tokio::join!(run(0), run(10));
+    println!("{:0>2}", 1);
     Ok(())
 }
 

@@ -247,7 +247,7 @@ pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     let mut conn = get_conn()?;
     let id = verify_perm(headers, &mut conn)?;
     debug_info(format!(
-        "修改自定义下拉字段，操作者：{}，数据：{:?}",
+        "删除自定义下拉字段，操作者：{}，数据：{:?}",
         id, value
     ));
     let data: CustomInfos = serde_json::from_value(value)?;
@@ -272,7 +272,7 @@ fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
     // 删除客户或产品对应的字段值
     let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
     conn.query_drop(format!(
-        "DELETE FROM {table} SET WHERE display = '{}'",
+        "DELETE FROM {table} WHERE display = '{}'",
         param.value
     ))?;
     if let CustomizeFieldType::Box = field {

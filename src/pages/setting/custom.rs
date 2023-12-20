@@ -122,20 +122,22 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
     ))?;
     if param.ty == 0 {
         let customers_id: Vec<String> = conn.query_map("SELECT id FROM customer", |s| s)?;
-        let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
-        let mut values: String = customers_id
-            .iter()
-            .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
-            .collect();
-        values.pop();
-        let query = format!(
-            "INSERT INTO {table} (display, id, value) VALUES {}",
-            values);
-            println!("{}", query);
-        conn.query_drop(format!(
-            "INSERT INTO {table} (display, id, value) VALUES {}",
-            values
-        ))?;
+        if !customers_id.is_empty() {
+            let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
+            let mut values: String = customers_id
+                .iter()
+                .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
+                .collect();
+            values.pop();
+            let query = format!(
+                "INSERT INTO {table} (display, id, value) VALUES {}",
+                values);
+                println!("{}", query);
+            conn.query_drop(format!(
+                "INSERT INTO {table} (display, id, value) VALUES {}",
+                values
+            ))?;
+        }
     } else {
         // TODO
         todo!()

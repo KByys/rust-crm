@@ -91,7 +91,7 @@ impl DataOptions {
             DataOptions::VisitTheme => "visit_theme",
             DataOptions::OrderType => "order_type",
             DataOptions::SalesUnit => "sales_unit",
-            DataOptions::StoreHouse => "store_house",
+            DataOptions::StoreHouse => "storehouse",
             DataOptions::ProductType => "product_type",
             DataOptions::ProductUnit => "product_unit",
             DataOptions::Payment => "payment",

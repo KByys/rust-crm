@@ -108,6 +108,7 @@ impl Table {
             id VARCHAR(50) NOT NULL,
             name VARCHAR(50) NOT NULL,
             specification VARCHAR(10) NOT NULL,
+            cover VARCHAR(150) NULL,
             model VARCHAR(20) NOT NULL,
             unit VARCHAR(30) NOT NULL,
             amount INT NOT NULL,

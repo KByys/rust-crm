@@ -9,7 +9,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "crm=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "crm_rust=debug,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -42,6 +42,10 @@ async fn main() {
 fn _create_all_dir() -> std::io::Result<()> {
     _create_dir("config")?;
     _create_dir("data")?;
+    _create_dir("resources")?;
+    _create_dir("resources/product")?;
+    _create_dir("resources/approval")?;
+
     Ok(())
 }
 fn _create_dir(path: &str) -> std::io::Result<()> {

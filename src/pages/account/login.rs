@@ -64,7 +64,6 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
     } else {
         let user: LoginID = serde_json::from_value(value)?;
         let digest = md5::compute(&user.password);
-        println!("123 -- {:?}", digest.0);
         let info: Option<User> =
             conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", user.id))?;
         println!("{:?}", info);

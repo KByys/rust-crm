@@ -1,8 +1,13 @@
-use std::fmt::Display;
+use std::{fmt::Display, path::{Path, PathBuf}};
 
-use axum::{http::StatusCode, Json};
+use axum::{
+    http::{HeaderValue, StatusCode},
+    Json,
+};
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json::{json, Value};
+
+use crate::base64_decode;
 /// 响应数据
 #[derive(Debug)]
 pub struct Response {
@@ -132,5 +137,65 @@ impl From<std::time::SystemTimeError> for Response {
 impl From<axum::extract::multipart::MultipartError> for Response {
     fn from(value: axum::extract::multipart::MultipartError) -> Self {
         Response::internal_server_error(value)
+    }
+}
+impl From<base64::DecodeError> for Response {
+    fn from(value: base64::DecodeError) -> Self {
+        Response::internal_server_error(format!("base64解码错误，具体信息为：{value}"))
+    }
+}
+
+pub struct BodyFile {
+    body: Vec<u8>,
+    filename: String,
+    mime: &'static str,
+}
+impl axum::response::IntoResponse for BodyFile {
+    fn into_response(self) -> axum::response::Response {
+        let mut response = self.body.into_response();
+
+        let headers = response.headers_mut();
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static(self.mime),
+        );
+
+        headers.insert(
+            axum::http::header::CONTENT_DISPOSITION,
+            HeaderValue::from_str(&format!("attachment; filename=\"{}\"", self.filename)).unwrap(),
+        );
+        response
+    }
+}
+
+impl BodyFile {
+    pub fn new_with_base64_url(parent: impl AsRef<Path>, url: &str) -> Result<Self, Response> {
+        let mut path = parent.as_ref().to_path_buf();
+        let decode_str = base64_decode(url)?;
+        // filename.xxx?3846956
+        let str = String::from_utf8_lossy(&decode_str).to_string();
+        path.push(&str);
+        if !path.is_file() {
+            return Err(Response::not_exist("找不到该地址指向的文件".to_string()));
+        }
+        let bytes = std::fs::read(&path)?;
+        let split: Vec<&str> = str.splitn(2, '?').collect();
+        if let Some(filename) = split.first() {
+            let p = PathBuf::from(filename);
+            let mime = if let Some(ext) = p.extension() {
+                match ext.to_string_lossy().as_ref() {
+                    "jpeg" | "jpg" => "image/jpeg",
+                    "png" => "image/png",
+                    // 待定
+                    _ => "image/png"
+                }
+            } else {
+                "text/plain"
+            };
+            Ok(Self { body: bytes, filename: filename.to_string(), mime })
+
+        } else {
+            Err(Response::internal_server_error("地址解析错误"))               
+        }
     }
 }

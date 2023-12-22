@@ -75,7 +75,7 @@ pub fn create_table() -> Result<()> {
             ('银行转账', '0000-00-00 00:00:01'), 
             ('对公转账', '0000-00-00 00:00:02')",
     )?;
-    conn.query_drop("INSERT IGNORE INTO store_house (value, create_time) VALUES ('主仓库', '0000-00-00 00:00:00')")?;
+    conn.query_drop("INSERT IGNORE INTO storehouse (value, create_time) VALUES ('主仓库', '0000-00-00 00:00:00')")?;
     conn.query_drop(Table::CUSTOMER_TABLE)?;
     conn.query_drop(Table::CUSTOMER_LOGIN_TABLE)?;
     conn.query_drop(Table::APPOINTMENT_TABLE)?;
@@ -120,5 +120,6 @@ pub fn create_table() -> Result<()> {
             ))?;
         }
     }
+    conn.query_drop(Table::PRODUCT_TABLE)?;
     Ok(())
 }

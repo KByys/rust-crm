@@ -103,4 +103,22 @@ impl Table {
             PRIMARY KEY(ty, id)
         )
     ";
+
+    pub const PRODUCT_TABLE: &str = "CREATE TABLE IF NOT EXISTS(
+            id VARCHAR(50) NOT NULL,
+            name VARCHAR(50) NOT NULL,
+            specification VARCHAR(10) NOT NULL,
+            model VARCHAR(20) NOT NULL,
+            unit VARCHAR(30) NOT NULL,
+            amount INT NOT NULL,
+            product_type VARCHAR(30) NOT NULL,
+            price FLOAT NOT NULL,
+            barcode NOT NULL,
+            explanation TEXT,
+            storehouse VARCHAR(30) NOT NULL,
+            PRIMARY KEY (id),
+            FOREIGN KEY (storehouse) REFERENCES storehouse(value)
+        )
+    ";
+
 }

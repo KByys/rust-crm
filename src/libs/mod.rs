@@ -29,7 +29,7 @@ macro_rules! do_if {
 }
 pub struct MessagePart {
     pub files: Vec<(Vec<u8>, Option<String>)>,
-    pub data: String,
+    pub json: String,
 }
 
 pub async fn parse_multipart(mut part: Multipart) -> Result<MessagePart, Response> {
@@ -48,5 +48,5 @@ pub async fn parse_multipart(mut part: Multipart) -> Result<MessagePart, Respons
             _ => (),
         }
     }
-    Ok(MessagePart { files, data })
+    Ok(MessagePart { files, json: data })
 }

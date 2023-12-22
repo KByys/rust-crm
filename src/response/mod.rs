@@ -129,3 +129,8 @@ impl From<std::time::SystemTimeError> for Response {
         Response::internal_server_error(value)
     }
 }
+impl From<axum::extract::multipart::MultipartError> for Response {
+    fn from(value: axum::extract::multipart::MultipartError) -> Self {
+        Response::internal_server_error(value)
+    }
+}

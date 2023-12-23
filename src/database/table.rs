@@ -65,7 +65,7 @@ impl Table {
         )
     ";
     /// 签到表
-    /// 
+    ///
     /// file 为附件的base64编码地址，如果有多个附件则用`&`隔开
     pub const SING_TABLE: &str = "CREATE TABLE IF NOT EXISTS sign(
             signer VARCHAR(15) NOT NULL,
@@ -75,7 +75,7 @@ impl Table {
             file TEXT
         )
     ";
-    
+
     // TODO 还需要修改
     /// 预约拜访时间表
     /// status, 0 未完成， 1 已完成, 2 逾期（当天没有完成即逾期）
@@ -103,9 +103,12 @@ impl Table {
             PRIMARY KEY(ty, id)
         )
     ";
-
-    pub const PRODUCT_TABLE: &str = "CREATE TABLE IF NOT EXISTS(
-            id VARCHAR(50) NOT NULL,
+    /// 产品表
+    /// num 编号
+    /// cover 封面的地址
+    pub const PRODUCT_TABLE: &str = "CREATE TABLE IF NOT EXISTS product(
+            id VARCHAR(150) NOT NULL,
+            num VARCHAR(50) NOT NULL,
             name VARCHAR(50) NOT NULL,
             specification VARCHAR(10) NOT NULL,
             cover VARCHAR(150) NULL,
@@ -114,12 +117,19 @@ impl Table {
             amount INT NOT NULL,
             product_type VARCHAR(30) NOT NULL,
             price FLOAT NOT NULL,
-            barcode NOT NULL,
+            create_time VARCHAR(25) NOT NULL,
+            barcode VARCHAR(20) NOT NULL,
             explanation TEXT,
             storehouse VARCHAR(30) NOT NULL,
             PRIMARY KEY (id),
             FOREIGN KEY (storehouse) REFERENCES storehouse(value)
         )
     ";
-
+    /// 产品编号，用于记录顺序
+    pub const PRODUCT_NUM: &str = "CREATE TABLE IF NOT EXISTS product_num(
+            name VARCHAR(100) NOT NULL,
+            num INT NOT NULL,
+            PRIMARY KEY (name)
+        )  
+    ";
 }

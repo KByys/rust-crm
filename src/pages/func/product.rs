@@ -21,7 +21,7 @@ use crate::{
     pages::CUSTOM_FIELD_INFOS,
     parse_jwt_macro,
     response::BodyFile,
-    Response, ResponseResult, TextInfos,
+    Response, ResponseResult, TextInfos, ID,
 };
 
 use super::customer::CCInfos;
@@ -327,8 +327,11 @@ async fn delete_product(
     if let Identity::Staff(_, _) = Identity::new(&id, &mut conn)? {
         return Err(Response::permission_denied());
     };
-    let product: Option<BaseInfos> =
-        conn.query_first(format!("SELECT * FROM product WHERE id = '{}'", id))?;
+    let product_id: ID = serde_json::from_value(value)?;
+    let product: Option<BaseInfos> = conn.query_first(format!(
+        "SELECT * FROM product WHERE id = '{}'",
+        product_id.id
+    ))?;
     match product {
         Some(product) => {
             debug_info(format!(

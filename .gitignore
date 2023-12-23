@@ -6,6 +6,5 @@ Cargo.lock
 /tmp
 /.idea
 /.vscode
-/examples
 /config/config.json
 /resources

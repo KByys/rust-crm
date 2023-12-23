@@ -204,7 +204,9 @@ fn qs_customers(f: &Info, status: &str, conn: &mut PooledConn) -> VecCustomer {
 }
 /// 查询我的客户信息
 fn qm_customers(f: &Info, id: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
+
     let query = query_statement(format!("salesman = '{}' AND {}", id, gen_filter(f, status)));
+    println!("{}", query);
     conn.query_map(query, |f| f)
 }
 /// 查询指定部门的客户信息

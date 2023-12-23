@@ -46,6 +46,18 @@ impl From<DateTime<Local>> for TIME {
         }
     }
 }
+#[test]
+fn test() {
+    let time = TIME {
+        naos: 0,
+        year: 2,
+        month: 2,
+        day: 3,
+        ..Default::default()
+    };
+    println!("{}", time.format(TimeFormat::YYYYMMDD_HHMMSS))
+}
+
 impl TIME {
     /// 获取当前的时间
     pub fn now() -> Result<Self, SystemTimeError> {
@@ -66,14 +78,14 @@ impl TIME {
     }
     pub fn format(&self, fmt: TimeFormat) -> String {
         match fmt {
-            TimeFormat::HHMMSS => format!("{:0>2}:{:2>0}:{:2>0}", self.hour, self.minute, self.second),
-            TimeFormat::YYYYMMDD => format!("{:0>4}-{:0>2}-{:2>0}", self.year, self.month, self.day),
+            TimeFormat::HHMMSS => format!("{:0>2}:{:0>2}:{:0>2}", self.hour, self.minute, self.second),
+            TimeFormat::YYYYMMDD => format!("{:0>4}-{:0>2}-{:0>2}", self.year, self.month, self.day),
             TimeFormat::YYYYMMDD_HHMM => format!(
-                "{:0>4}-{:0>2}-{:2>0} {:2>0}:{:2>0}",
+                "{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}",
                 self.year, self.month, self.day, self.hour, self.minute
             ),
             TimeFormat::YYYYMMDD_HHMMSS => format!(
-                "{:0>4}-{:0>2}-{:2>0} {:2>0}:{:2>0}:{:2>0}",
+                "{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}",
                 self.year, self.month, self.day, self.hour, self.minute, self.second
             ),
         }

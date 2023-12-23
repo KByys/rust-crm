@@ -5,7 +5,6 @@ use std::{
 
 use axum::{
     http::{HeaderValue, StatusCode},
-    response::IntoResponse,
     Json,
 };
 use serde::{ser::SerializeStruct, Serialize};

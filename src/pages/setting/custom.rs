@@ -112,33 +112,45 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
         ))?
         .is_some();
     if is_exist {
-        println!("444");
         return Ok(());
     }
-    println!("2222");
     conn.query_drop(format!(
         "INSERT INTO {} ( value, create_time) VALUES ('{}', '{}')",
         table, param.value, create_time
     ))?;
-    if param.ty == 0 {
-        let customers_id: Vec<String> = conn.query_map("SELECT id FROM customer", |s| s)?;
-        if !customers_id.is_empty() {
-            let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
-            let mut values: String = customers_id
-                .iter()
-                .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
-                .collect();
-            values.pop();
-            let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
-            println!("{}", query);
-            conn.query_drop(format!(
-                "INSERT INTO {table} (display, id, value) VALUES {}",
-                values
-            ))?;
-        }
+    let id: Vec<String> = if param.ty == 0 {
+        // if !customers_id.is_empty() {
+        //     let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
+        //     let mut values: String = customers_id
+        //         .iter()
+        //         .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
+        //         .collect();
+        //     values.pop();
+        //     let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
+        //     println!("{}", query);
+        //     conn.query_drop(format!(
+        //         "INSERT INTO {table} (display, id, value) VALUES {}",
+        //         values
+        //     ))?;
+        // }
+        conn.query_map("SELECT id FROM customer", |s| s)?
     } else {
-        // TODO
-        todo!()
+        conn.query_map("SELECT id FROM product", |s| s)?
+    };
+
+    if !id.is_empty() {
+        let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
+        let mut values: String = id
+            .iter()
+            .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
+            .collect();
+        values.pop();
+        let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
+        println!("{}", query);
+        conn.query_drop(format!(
+            "INSERT INTO {table} (display, id, value) VALUES {}",
+            values
+        ))?;
     }
     Ok(())
 }

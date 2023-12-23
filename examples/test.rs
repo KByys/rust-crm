@@ -5,7 +5,8 @@ use crm_rust::database::get_conn;
 use mysql::prelude::Queryable;
 #[tokio::main]
 async fn main() -> mysql::Result<()> {
-    println!("{:0>2}", 1);
+    println!("{:?<2}", 1);
+    
     Ok(())
 }
 

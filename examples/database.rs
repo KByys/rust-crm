@@ -1,23 +1,15 @@
-use std::{
-    thread::sleep,
-    time::Duration,
-};
 
-use crm_rust::database::get_conn;
-use mysql::prelude::Queryable;
+use crm_rust::pages::CUSTOM_FIELD_INFOS;
+use mysql::{prelude::Queryable, Pool};
 
 fn main() -> mysql::Result<()> {
-    let mut conn = get_conn()?;
-    for i in 0..10 {
-        conn.query_drop("BEGIN")?;
-        conn.query_drop(format!("INSERT INTO stu VALUES ('{}', '3455')", i))?;
-        if i % 2 == 0 {
-            conn.query_drop("COMMIT")?;
-        } else {
-            sleep(Duration::from_secs(1));
-            conn.query_drop("ROLLBACK")?;
+    let pool = Pool::new("mysql://root:313aaa@localhost:3306/crm")?;
+    let mut conn = pool.get_conn()?;
+    for table in CUSTOM_FIELD_INFOS {
+        for t in table {
+            conn.query_drop(format!("ALTER table {t} modify column id VARCHAR(55) NOT NULL"))?;
+            
         }
-        println!("{}", i);
     }
     Ok(())
 }

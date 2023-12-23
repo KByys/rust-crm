@@ -68,7 +68,7 @@ pub struct FCInfos {
     pub last_transaction_time: Option<String>,
 }
 /// 自定义的客户信息
-#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
 pub struct CCInfos {
     pub text_infos: Vec<TextInfos>,
     pub time_infos: Vec<TextInfos>,

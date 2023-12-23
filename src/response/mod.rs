@@ -1,7 +1,11 @@
-use std::{fmt::Display, path::{Path, PathBuf}};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use axum::{
     http::{HeaderValue, StatusCode},
+    response::IntoResponse,
     Json,
 };
 use serde::{ser::SerializeStruct, Serialize};
@@ -169,17 +173,30 @@ impl axum::response::IntoResponse for BodyFile {
 }
 
 impl BodyFile {
-    pub fn new_with_base64_url(parent: impl AsRef<Path>, url: &str) -> Result<Self, Response> {
+    pub fn new_with_base64_url(
+        parent: impl AsRef<Path>,
+        url: &str,
+    ) -> Result<Self, (StatusCode, String)> {
         let mut path = parent.as_ref().to_path_buf();
-        let decode_str = base64_decode(url)?;
+        let decode_bytes = base64_decode(url).map_err(|e| {
+            (
+                StatusCode::NOT_ACCEPTABLE,
+                format!("地址解析错误，具体信息为：{e}"),
+            )
+        })?;
         // filename.xxx?3846956
-        let str = String::from_utf8_lossy(&decode_str).to_string();
-        path.push(&str);
+        let decode_str = String::from_utf8_lossy(&decode_bytes).to_string();
+        path.push(url);
         if !path.is_file() {
-            return Err(Response::not_exist("找不到该地址指向的文件".to_string()));
+            return Err((StatusCode::NOT_FOUND, "找不到该地址指向的文件".to_string()));
         }
-        let bytes = std::fs::read(&path)?;
-        let split: Vec<&str> = str.splitn(2, '?').collect();
+        let bytes = std::fs::read(&path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("内部错误，具体信息为：{e}"),
+            )
+        })?;
+        let split: Vec<&str> = decode_str.splitn(2, '?').collect();
         if let Some(filename) = split.first() {
             let p = PathBuf::from(filename);
             let mime = if let Some(ext) = p.extension() {
@@ -187,15 +204,18 @@ impl BodyFile {
                     "jpeg" | "jpg" => "image/jpeg",
                     "png" => "image/png",
                     // 待定
-                    _ => "image/png"
+                    _ => "image/png",
                 }
             } else {
                 "text/plain"
             };
-            Ok(Self { body: bytes, filename: filename.to_string(), mime })
-
+            Ok(Self {
+                body: bytes,
+                filename: filename.to_string(),
+                mime,
+            })
         } else {
-            Err(Response::internal_server_error("地址解析错误"))               
+            Err((StatusCode::INTERNAL_SERVER_ERROR, "地址解析错误".to_owned()))
         }
     }
 }

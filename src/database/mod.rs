@@ -52,6 +52,28 @@ where
     result
 }
 
+pub fn c_or_r_more<F, T, P>(
+    f: F,
+    conn: &mut PooledConn,
+    param: T,
+    more: P
+) -> Result<(), Response>
+where
+    F: Fn(&mut PooledConn, T, P) -> Result<(), Response>,
+{
+    
+    match f(conn, param, more) {
+        Ok(_) => {
+            conn.query_drop("COMMIT")?;
+            Ok(())
+        }
+        Err(e) => {
+            conn.query_drop("ROLLBACK")?;
+            Err(e)
+        }
+    }
+}
+
 /// 连接数据库
 pub fn get_conn() -> Result<PooledConn> {
     unsafe { Pool::new(MYSQL_URI.as_str())?.get_conn() }
@@ -109,11 +131,9 @@ pub fn create_table() -> Result<()> {
     // 存放客户和产品的自定义字段的值
     for fields in crate::pages::CUSTOM_FIELD_INFOS {
         for table in fields {
-            // TODO  暂时不考虑添加外键
-            // 文本 和 时间
             conn.query_drop(format!(
                 "CREATE TABLE IF NOT EXISTS {table} (
-                    id VARCHAR(15) NOT NULL,
+                    id VARCHAR(55) NOT NULL,
                     display VARCHAR(30) NOT NULL,
                     value VARCHAR(30)
                 )"
@@ -121,5 +141,6 @@ pub fn create_table() -> Result<()> {
         }
     }
     conn.query_drop(Table::PRODUCT_TABLE)?;
+    conn.query_drop(Table::PRODUCT_NUM)?;
     Ok(())
 }

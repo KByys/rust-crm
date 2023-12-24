@@ -49,7 +49,7 @@ pub async fn update_customer_infos(headers: HeaderMap, Json(value): Json<Value>)
 fn _update(conn: &mut PooledConn, info: Info) -> mysql::Result<()> {
     let cus = &info.data.fixed_infos;
     conn.query_drop(format!("UPDATE customer SET id = '{}', name = ' {}', company = '{}', is_share = {},
-        sex = {}, chat = '{}', next_visit_time = '{}', need = '{}', fax == '{}', post = '{}', address = '{}',
+        sex = {}, chat = '{}', next_visit_time = '{}', need = '{}', fax = '{}', post = '{}', address = '{}',
         industry = '{}', birthday = '{}', remark = '{}', ty = '{}', tag = '{}', status = '{}', source = '{}', role = '{}'
         WHERE id = '{}'",
         cus.id, cus.name, cus.company, cus.is_share, cus.sex, cus.chat, cus.next_visit_time, cus.need,

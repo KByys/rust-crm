@@ -133,6 +133,7 @@ fn _insert(
 ) -> Result<(), Response> {
     let base_infos = &product.base_infos;
     let custom_infos = &product.custom_infos;
+    println!("{:#?}", base_infos);
     conn.exec_drop("INSERT INTO product 
         (id, num, name, specification, cover, model, unit, amount, product_type, price, create_time, barcode, explanation, storehouse) 
         VALUES (

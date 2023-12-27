@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::{
     bearer,
-    database::{get_conn, Database},
+    database::{get_conn, Database, c_or_r},
     debug_info,
     pages::CUSTOM_FIELD_INFOS,
     parse_jwt_macro, Response, ResponseResult,
@@ -32,21 +32,23 @@ pub async fn update_customer_infos(headers: HeaderMap, Json(value): Json<Value>)
     }
     conn.query_drop("BEGIN")?;
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    match _update(&mut conn, info) {
-        Ok(_) => {
-            conn.query_drop("COMMIT")?;
-            conn.query_drop(Database::SET_FOREIGN_KEY_1)?;
-            Ok(Response::empty())
-        }
-        Err(e) => {
-            conn.query_drop("ROLLBACK")?;
-            conn.query_drop(Database::SET_FOREIGN_KEY_1)?;
-            Err(Response::internal_server_error(e))
-        }
-    }
+    // match _update(&mut conn, info) {
+    //     Ok(_) => {
+    //         conn.query_drop("COMMIT")?;
+    //         conn.query_drop(Database::SET_FOREIGN_KEY_1)?;
+    //         Ok(Response::empty())
+    //     }
+    //     Err(e) => {
+    //         conn.query_drop("ROLLBACK")?;
+    //         conn.query_drop(Database::SET_FOREIGN_KEY_1)?;
+    //         Err(Response::internal_server_error(e))
+    //     }
+    // }
+    c_or_r(_update, &mut conn, &info, true)?;
+    Ok(Response::empty())
 }
 
-fn _update(conn: &mut PooledConn, info: Info) -> mysql::Result<()> {
+fn _update(conn: &mut PooledConn, info: &Info) -> Result<(), Response> {
     let cus = &info.data.fixed_infos;
     conn.query_drop(format!("UPDATE customer SET id = '{}', name = ' {}', company = '{}', is_share = {},
         sex = {}, chat = '{}', next_visit_time = '{}', need = '{}', fax = '{}', post = '{}', address = '{}',
@@ -65,6 +67,8 @@ fn _update(conn: &mut PooledConn, info: Info) -> mysql::Result<()> {
             "UPDATE token SET id = '{}' WHERE id = '{}' AND ty = 1",
             cus.id, info.id
         ))?;
+        conn.query_drop(format!("UPDATE customer_colleague SET customer_id = '{}' WHERE customer_id = '{}'", cus.id, info.id))?;
+
     }
 
     for i in 0..3 {

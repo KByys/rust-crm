@@ -1,12 +1,19 @@
 
 use std::{thread::sleep, time::Duration};
 
-use crm_rust::database::get_conn;
+use crm_rust::{database::get_conn, base64_encode, libs::time::TIME};
 use mysql::prelude::Queryable;
 #[tokio::main]
 async fn main() -> mysql::Result<()> {
-    println!("{:?<2}", 1);
-    
+     let time = TIME::now().unwrap();
+     
+    let id = base64_encode(format!(
+        "{}-{}-{}",
+        "你好的十多个冻死",
+        time.naos() / 10000,
+        rand::random::<u8>()
+    ));
+    println!("{}", id.len());
     Ok(())
 }
 

@@ -1,3 +1,4 @@
+mod colleague;
 mod delete;
 mod insert;
 mod query;
@@ -11,6 +12,7 @@ pub fn customer_router() -> Router {
         .route("/customer/info/pages", post(query::qc_infos_with_pages))
         .route("/customer/add", post(insert::insert_customer))
         .route("/customer/update", post(update::update_customer_infos))
+        .merge(colleague::colleague_router())
 }
 
 pub static CUSTOMER_FIELDS: &str =

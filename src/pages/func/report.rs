@@ -324,7 +324,7 @@ fn get_name(conn: &mut PooledConn, u: Option<&User>, table: &str) -> Option<User
     .ok()
     .and_then(|r| r.map(|(phone, name)| User { name, phone }))
 }
-fn sort_reports(data: &mut Vec<ResponseData>, sort: usize) {
+fn sort_reports(data: &mut [ResponseData], sort: usize) {
     let sort = match sort {
         0 => |v1: &ResponseData, v2: &ResponseData| v1.report.send_time.cmp(&v2.report.send_time),
         1 => |v1: &ResponseData, v2: &ResponseData| {

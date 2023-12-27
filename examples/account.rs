@@ -1,4 +1,4 @@
-use crm_rust::database::get_conn;
+use crm_rust::{database::get_conn, do_if};
 use mysql::prelude::Queryable;
 use mysql_common::prelude::FromRow;
 use serde_json::json;
@@ -9,9 +9,7 @@ struct Test {
 }
 
 fn main() -> mysql::Result<()> {
-    let data = vec!["213", "3水电费交多少", "sdfdsfds"];
-    let d = json!(data);
-    println!("{}", d);
-    let dd: Vec<String> = serde_json::from_str(&d.to_string()).unwrap();
+    let d = 1;
+    println!("{}", do_if!(d == 1 => 1, 0));
     Ok(())
 }

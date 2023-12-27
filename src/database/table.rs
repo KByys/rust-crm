@@ -86,8 +86,8 @@ impl Table {
             applicant VARCHAR(15) NOT NULL,
             salesman VARCHAR(15) NOT NULL,
             customer VARCHAR(15) NOT NULL,
-            appointment VARCHAR(16) NOT NULL,
-            finish_time VARCHAR(16),
+            appointment VARCHAR(25) NOT NULL,
+            finish_time VARCHAR(25),
             status INT NOT NULL,
             theme VARCHAR(30),
             content TEXT
@@ -132,4 +132,38 @@ impl Table {
             PRIMARY KEY (name)
         )  
     ";
+    /// 报告表
+    /// 
+    /// cc 抄送人，ac 管理客户， reviewer 批阅者
+    /// 
+    /// ty, 0 日报，1 周报，2 月报
+    /// 
+    /// status, 0 未审批，1 审批通过，2 审批未通过, 3 未发送
+    /// 
+    /// 不添加外键
+    /// 
+    pub const REPORT_TABLE: &str = "CREATE TABLE IF NOT EXISTS report(
+        id VARCHAR (55) NOT NULL,
+        applicant VARCHAR(15) NOT NULL,
+        reviewer VARCHAR(15) NOT NULL,
+        ty INT NOT NULL,
+        status INT NOT NULL,
+        create_time VARCHAR (25) NOT NULL,
+        cc VARCHAR(15) NULL,
+        ac VARCHAR(15) NULL,
+        contents TEXT NOT NULL,
+        send_time VARCHAR (25) NULL,
+        processing_time VARCHAR(25) NULL,
+        option TEXT NULL,
+        PRIMARY KEY (id)
+    )";
+    /// 报告回复
+    pub const REPORT_REPLY: &str = "CREATE TABLE IF NOT EXISTS report_reply(
+        id VARCHAR(55) NOT NULL,
+        report_id VARCHAR(55) NOT NULL,
+        create_time VARCHAR(25) NOT NULL,
+        contents TEXT NOT NULL,
+        respondent VARCHAR(15) NOT NULL,
+        PRIMARY KEY (id)
+    )";
 }

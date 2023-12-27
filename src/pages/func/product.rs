@@ -119,7 +119,7 @@ async fn add_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     } else {
         None
     };
-
+    conn.query_drop("BEGIN")?;
     c_or_r_more(_insert, &mut conn, &product, data.files.first())?;
     Ok(Response::ok(json!({
         "id": product.base_infos.id
@@ -201,7 +201,7 @@ async fn update_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     } else {
         product.base_infos.cover
     };
-
+    conn.query_drop("BEGIN")?;
     c_or_r_more(_update, &mut conn, &product, (data.files.first(), cover))?;
     Ok(Response::ok(json!({
         "id": product.base_infos.id
@@ -332,6 +332,7 @@ async fn delete_product(
         "SELECT * FROM product WHERE id = '{}'",
         product_id.id
     ))?;
+    conn.query_drop("BEGIN")?;
     match product {
         Some(product) => {
             debug_info(format!(

@@ -1,7 +1,8 @@
-use std::fmt::Display;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt::Display;
 
 use crate::do_if;
+
 
 pub fn deserialize_bool_to_i32<'de, D>(de: D) -> Result<i32, D::Error>
 where
@@ -20,5 +21,18 @@ where
         serializer.serialize_bool(true)
     } else {
         serializer.serialize_bool(false)
+    }
+}
+
+pub fn serialize_null_to_default<S>(
+    value: &Option<String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(value) => serializer.serialize_str(value),
+        _ => serializer.serialize_str(""),
     }
 }

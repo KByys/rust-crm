@@ -154,7 +154,7 @@ impl Table {
         contents TEXT NOT NULL,
         send_time VARCHAR (25) NULL,
         processing_time VARCHAR(25) NULL,
-        option TEXT NULL,
+        opinion TEXT NULL,
         PRIMARY KEY (id)
     )";
     /// 报告回复

@@ -142,5 +142,7 @@ pub fn create_table() -> Result<()> {
     }
     conn.query_drop(Table::PRODUCT_TABLE)?;
     conn.query_drop(Table::PRODUCT_NUM)?;
+    conn.query_drop(Table::REPORT_TABLE)?;
+    conn.query_drop(Table::REPORT_REPLY)?;
     Ok(())
 }

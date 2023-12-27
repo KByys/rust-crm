@@ -64,6 +64,16 @@ impl Table {
             FOREIGN KEY (id) REFERENCES customer(id)
         )
     ";
+    /// 客户联系人
+    pub const CUSTOMER_COLLEAGUE_TABLE: &str = "CREATE TABLE IF NOT EXISTS customer_colleague(
+        id VARCHAR(55) NOT NULL,
+        customer_id VARCHAR(15) NOT NULL,
+        phone VARCHAR(15) NOT NULL,
+        name VARCHAR(10) NOT NULL,
+        PRIMARY KEY(id),
+        FOREIGN KEY (customer_id) REFERENCES customer(id)
+    )";
+    
     /// 签到表
     ///
     /// file 为附件的base64编码地址，如果有多个附件则用`&`隔开

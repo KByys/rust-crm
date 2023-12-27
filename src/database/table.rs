@@ -66,7 +66,7 @@ impl Table {
     ";
     /// 客户联系人
     pub const CUSTOMER_COLLEAGUE_TABLE: &str = "CREATE TABLE IF NOT EXISTS customer_colleague(
-        id VARCHAR(55) NOT NULL,
+        id VARCHAR(150) NOT NULL,
         customer_id VARCHAR(15) NOT NULL,
         phone VARCHAR(15) NOT NULL,
         name VARCHAR(10) NOT NULL,
@@ -153,7 +153,7 @@ impl Table {
     /// 不添加外键
     /// 
     pub const REPORT_TABLE: &str = "CREATE TABLE IF NOT EXISTS report(
-        id VARCHAR (55) NOT NULL,
+        id VARCHAR (150) NOT NULL,
         applicant VARCHAR(15) NOT NULL,
         reviewer VARCHAR(15) NOT NULL,
         ty INT NOT NULL,

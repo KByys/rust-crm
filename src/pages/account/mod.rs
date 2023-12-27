@@ -101,7 +101,7 @@ async fn query_user_data(headers: HeaderMap, Json(value): Json<Value>) -> Respon
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Data = serde_json::from_value(value)?;
-    if data.whole {
+    if !data.whole {
         let d = match Identity::new(&id, &mut conn)? {
             Identity::Boss if data.department.is_empty() => "总经办".to_owned(),
             Identity::Boss => data.department,

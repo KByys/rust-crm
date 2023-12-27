@@ -114,7 +114,7 @@ pub struct Report {
     #[serde(skip_deserializing)]
     processing_time: Option<String>,
     #[serde(default)]
-    option: Option<String>,
+    opinion: Option<String>,
 }
 impl Report {
     fn ac(&self) -> Option<&User> {
@@ -185,7 +185,7 @@ async fn process_report(
     struct Message {
         id: String,
         ok: bool,
-        option: String,
+        opinion: String,
     }
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
@@ -193,7 +193,7 @@ async fn process_report(
     let data: Message = serde_json::from_value(value)?;
     let status = do_if!(data.ok => 2, 3);
     conn.query_drop(format!(
-        "UPDATE report SET status = {status} AND option = '{}' WHERE id = '{}' AND reviewer = '{}' LIMIT 1", data.option, data.id, id))?;
+        "UPDATE report SET status = {status} AND opinion = '{}' WHERE id = '{}' AND reviewer = '{}' LIMIT 1", data.opinion, data.id, id))?;
     Ok(Response::empty())
 }
 async fn update_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {

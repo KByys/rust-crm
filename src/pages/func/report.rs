@@ -6,11 +6,16 @@ use crate::{
     do_if,
     libs::{
         gen_id,
+        perm::Identity,
         time::{TimeFormat, TIME},
     },
     parse_jwt_macro, Response, ResponseResult,
 };
-use axum::{http::HeaderMap, Json, Router, routing::{post, delete, get}};
+use axum::{
+    http::HeaderMap,
+    routing::{delete, get, post},
+    Json, Router,
+};
 use mysql::{
     params,
     prelude::{FromValue, Queryable},
@@ -22,14 +27,13 @@ use serde_json::json;
 
 pub fn report_router() -> Router {
     Router::new()
-    .route("/report/add", post(add_report))
-    .route("/report/send", post(send_report))
-    .route("/report/read", post(process_report))
-    .route("/report/update", post(update_report))
-    .route("/report/delete", delete(delete_report))
-    .route("/report/infos", post(query_reports))
-    .route("/report/get/reply", get(get_report_replies))
-
+        .route("/report/add", post(add_report))
+        .route("/report/send", post(send_report))
+        .route("/report/read", post(process_report))
+        .route("/report/update", post(update_report))
+        .route("/report/delete", delete(delete_report))
+        .route("/report/infos", post(query_reports))
+        .route("/report/get/reply", get(get_report_replies))
 }
 
 #[derive(Debug, serde::Serialize, Default, Eq)]
@@ -67,10 +71,10 @@ impl<'de> serde::Deserialize<'de> for User {
     }
 }
 impl From<String> for User {
-    fn from(name: String) -> Self {
+    fn from(phone: String) -> Self {
         User {
-            name,
-            phone: String::new(),
+            phone,
+            name: String::new(),
         }
     }
 }
@@ -147,7 +151,7 @@ async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) ->
         &format!("{}{}", rand::random::<char>(), rand::random::<char>()),
     );
     conn.exec_drop("INSERT INTO report (id, applicant, reviewer, ty, status, create_time, send_time, cc, ac, contents) 
-        VALUES (:id, :applicant, :reviewer, :ty, :create_time, :send_time, :status, :cc, :ac, :contents)", params! {
+        VALUES (:id, :applicant, :reviewer, :ty, :status, :create_time, :send_time, :cc, :ac, :contents)", params! {
             "id" => &data.id,
             "applicant" => data.applicant.name(),
             "reviewer" => data.reviewer.name(),
@@ -166,13 +170,11 @@ async fn send_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) -
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let Some(report_id) = value.as_str() else {
-        return Err(Response::invalid_format("格式错误，缺少id或id不是字符串"));
-    };
+    let report_id: crate::ID = serde_json::from_value(value)?;
     let time = TIME::now()?;
     conn.query_drop(format!(
-        "UPDATE report SET status = 0, send_time = '{}' WHERE id = '{}' AND applicant = '{}' LIMIT 1",
-        time.format(crate::libs::time::TimeFormat::YYYYMMDD_HHMMSS), report_id, id
+        "UPDATE report SET status = 1, send_time = '{}' WHERE id = '{}' AND applicant = '{}' LIMIT 1",
+        time.format(crate::libs::time::TimeFormat::YYYYMMDD_HHMMSS), report_id.id, id
     ))?;
     Ok(Response::empty())
 }
@@ -192,8 +194,16 @@ async fn process_report(
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Message = serde_json::from_value(value)?;
     let status = do_if!(data.ok => 2, 3);
+    let Some::<Report>(r) = conn.query_first(format!("SELECT * FROM report WHERE id = '{}'", data.id))? else {
+        return Err(Response::not_exist("该报告不存在"));
+    };
+    if r.reviewer.phone != id {
+        return Ok(Response::permission_denied());
+    } else if r.status != 1 {
+        return Err(Response::dissatisfy("该报告目前未发送或已被批阅"));
+    }
     conn.query_drop(format!(
-        "UPDATE report SET status = {status} AND opinion = '{}' WHERE id = '{}' AND reviewer = '{}' LIMIT 1", data.opinion, data.id, id))?;
+        "UPDATE report SET status = {status},  opinion = '{}' WHERE id = '{}' AND reviewer = '{}' LIMIT 1", data.opinion, data.id, id))?;
     Ok(Response::empty())
 }
 async fn update_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
@@ -245,8 +255,9 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     let mut conn = get_conn()?;
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let perm = Identity::new(&id, &mut conn)?;
     let data: Message = serde_json::from_value(value)?;
-    let mut filter = if data.ty > 2 {
+    let mut filter = if data.ty <= 2 {
         format!("ty = {}", data.ty)
     } else {
         // 所有
@@ -260,6 +271,14 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
         4 => (),
         _ => return Err(Response::ok(json!("status 非法"))),
     };
+    match &perm {
+        Identity::Boss => (),
+        _ => {
+            if data.applicant != id && data.reviewer != id && data.cc != id {
+                return Err(Response::permission_denied());
+            }
+        }
+    }
     if !data.applicant.is_empty() {
         filter.push_str(&format!("AND applicant = '{}'", data.applicant))
     }
@@ -275,31 +294,57 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     let reports: Vec<Report> =
         conn.query_map(format!("SELECT * FROM report WHERE {filter}"), |r| r)?;
     let mut res = Vec::new();
-    for report in reports {
+    for mut report in reports {
         let replies = get_replies(&report.id, &mut conn)?;
-        res.push(ResponseData {
-            report,
-            replies
-        })
+        report.applicant.name = conn
+            .query_first(format!(
+                "SELECT name FROM user WHERE id = '{}'",
+                report.applicant.phone
+            ))?
+            .unwrap_or_default();
+        report.reviewer.name = conn
+            .query_first(format!(
+                "SELECT name FROM user WHERE id = '{}'",
+                report.reviewer.phone
+            ))?
+            .unwrap_or_default();
+        report.ac = get_name(&mut conn, report.ac(), "customer");
+        report.cc = get_name(&mut conn, report.cc(), "user");
+        res.push(ResponseData { report, replies })
     }
     sort_reports(&mut res, data.sort);
     Ok(Response::ok(json!(res)))
 }
-
+fn get_name(conn: &mut PooledConn, u: Option<&User>, table: &str) -> Option<User> {
+    let u = u?;
+    conn.query_first(format!(
+        "SELECT id, name FROM {table} WHERE id = '{}'",
+        u.phone
+    ))
+    .ok()
+    .and_then(|r| r.map(|(phone, name)| User { name, phone }))
+}
 fn sort_reports(data: &mut Vec<ResponseData>, sort: usize) {
     let sort = match sort {
         0 => |v1: &ResponseData, v2: &ResponseData| v1.report.send_time.cmp(&v2.report.send_time),
-        1 => |v1: &ResponseData, v2: &ResponseData| v1.report.processing_time.cmp(&v2.report.processing_time),
-        2 => |v1: &ResponseData, v2: &ResponseData| v1.report.create_time.cmp(&v2.report.create_time),
-        3 => |v1: &ResponseData, v2: &ResponseData| v1.report.applicant.name.cmp(&v2.report.applicant.name),
+        1 => |v1: &ResponseData, v2: &ResponseData| {
+            v1.report.processing_time.cmp(&v2.report.processing_time)
+        },
+        2 => {
+            |v1: &ResponseData, v2: &ResponseData| v1.report.create_time.cmp(&v2.report.create_time)
+        }
+        3 => |v1: &ResponseData, v2: &ResponseData| {
+            v1.report.applicant.name.cmp(&v2.report.applicant.name)
+        },
         4 => |v1: &ResponseData, v2: &ResponseData| v1.report.reviewer.cmp(&v2.report.reviewer),
         5 => |v1: &ResponseData, v2: &ResponseData| v1.report.cc.cmp(&v2.report.cc),
         6 => |v1: &ResponseData, v2: &ResponseData| v1.report.ac.cmp(&v2.report.ac),
-        7 => |v1: &ResponseData, v2: &ResponseData| {
-            v1.replies.len().cmp(&v2.replies.len())
-        },
+        7 => |v1: &ResponseData, v2: &ResponseData| v1.replies.len().cmp(&v2.replies.len()),
         8 => |v1: &ResponseData, v2: &ResponseData| {
-            v1.replies.last().map(|f|&f.create_time).cmp(&v2.replies.last().map(|f|&f.create_time))
+            v1.replies
+                .last()
+                .map(|f| &f.create_time)
+                .cmp(&v2.replies.last().map(|f| &f.create_time))
         },
         _ => |_v1: &ResponseData, _v2: &ResponseData| Ordering::Equal,
     };

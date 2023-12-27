@@ -26,6 +26,7 @@ pub async fn insert_customer(headers: HeaderMap, Json(value): Json<Value>) -> Re
         ))?;
         salesman.unwrap_or(id.clone())
     };
+    conn.query_drop("BEGIN")?;
     c_or_r(_insert, &mut conn, &data, false)?;
 
     Ok(Response::empty())

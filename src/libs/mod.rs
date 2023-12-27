@@ -7,6 +7,8 @@ use axum::extract::Multipart;
 use base64::prelude::Engine;
 
 use crate::Response;
+
+use self::time::TIME;
 /// base64 url safe encode
 pub fn base64_encode(input: impl AsRef<[u8]>) -> String {
     base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(input)
@@ -46,7 +48,11 @@ pub async fn parse_multipart(mut part: Multipart) -> Result<MessagePart, Respons
                 let filename = field.file_name().map(|s| s.to_owned());
                 let content_type = field.content_type().map(|s| s.to_string());
                 let chunk = field.bytes().await?.to_vec();
-                files.push(FilePart { bytes: chunk, filename, content_type });
+                files.push(FilePart {
+                    bytes: chunk,
+                    filename,
+                    content_type,
+                });
             }
             Some("data") => {
                 data = field.text().await?;
@@ -55,4 +61,13 @@ pub async fn parse_multipart(mut part: Multipart) -> Result<MessagePart, Respons
         }
     }
     Ok(MessagePart { files, json: data })
+}
+
+pub fn gen_id(time: &TIME, name: &str) -> String {
+    base64_encode(format!(
+        "{}-{}-{}",
+        name,
+        time.naos() / 10000,
+        rand::random::<u8>()
+    ))
 }

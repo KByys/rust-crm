@@ -13,7 +13,8 @@ async fn main() -> mysql::Result<()> {
         time.naos() / 10000,
         rand::random::<u8>()
     ));
-    println!("{}", id.len());
+    println!("{id}");
+    println!("{}", id.chars().collect::<Vec<_>>().len());
     Ok(())
 }
 

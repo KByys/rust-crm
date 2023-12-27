@@ -7,7 +7,7 @@ fn main() -> mysql::Result<()> {
     let mut conn = pool.get_conn()?;
     for table in CUSTOM_FIELD_INFOS {
         for t in table {
-            conn.query_drop(format!("ALTER table {t} modify column id VARCHAR(55) NOT NULL"))?;
+            conn.query_drop(format!("ALTER table {t} modify column id VARCHAR(150) NOT NULL"))?;
             
         }
     }

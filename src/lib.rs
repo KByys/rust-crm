@@ -23,6 +23,10 @@ pub fn debug_info(info: String) {
     )
 }
 
+pub fn get_value<'a>(value: &'a serde_json::Value, index: &str) -> Option<&'a str> {
+    value.get(index).and_then(|s|s.as_str())
+}
+
 #[derive(serde::Serialize, FromRow, Debug, serde::Deserialize, Clone)]
 pub struct TextInfos {
     pub display: String,
@@ -115,5 +119,4 @@ pub fn read_data() {
             SEA_MIN_DAY = min_day;
         }
     }
-    
 }

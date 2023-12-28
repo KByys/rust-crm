@@ -255,7 +255,6 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     let mut conn = get_conn()?;
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let perm = Identity::new(&id, &mut conn)?;
     let data: Message = serde_json::from_value(value)?;
     let mut filter = if data.ty <= 2 {
         format!("ty = {}", data.ty)
@@ -271,13 +270,8 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
         4 => (),
         _ => return Err(Response::ok(json!("status 非法"))),
     };
-    match &perm {
-        Identity::Boss => (),
-        _ => {
-            if data.applicant != id && data.reviewer != id && data.cc != id {
-                return Err(Response::permission_denied());
-            }
-        }
+    if data.applicant != id && data.reviewer != id && data.cc != id {
+        return Err(Response::permission_denied());
     }
     if !data.applicant.is_empty() {
         filter.push_str(&format!("AND applicant = '{}'", data.applicant))

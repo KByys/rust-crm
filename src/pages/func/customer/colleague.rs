@@ -21,7 +21,7 @@ pub fn colleague_router() -> Router {
         .route("/customer/colleague/update", post(update_colleague))
         .route("/customer/colleague/delete", delete(delete_colleague))
 }
-#[derive(serde::Deserialize, serde::Serialize, FromRow)]
+#[derive(serde::Deserialize, serde::Serialize, FromRow, Debug)]
 struct ColleagueInfos {
     customer_id: String,
     #[serde(default)]
@@ -72,6 +72,12 @@ async fn update_colleague(
     if data.name.is_empty() || data.phone.is_empty() {
         return Err(Response::invalid_value("phone或name不能为空字符串"));
     }
+    println!("{:?}", data);
+    let sta = format!(
+        "UPDATE customer_colleague SET phone = '{}', name = '{}' WHERE id = '{}' LIMIT 1",
+        data.phone, data.name, data.id
+    );
+    println!("{}", sta);
     conn.query_drop(format!(
         "UPDATE customer_colleague SET phone = '{}', name = '{}' WHERE id = '{}' LIMIT 1",
         data.phone, data.name, data.id

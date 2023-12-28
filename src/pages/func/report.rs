@@ -152,14 +152,14 @@ async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) ->
     conn.exec_drop("INSERT INTO report (id, applicant, reviewer, ty, status, create_time, send_time, cc, ac, contents) 
         VALUES (:id, :applicant, :reviewer, :ty, :status, :create_time, :send_time, :cc, :ac, :contents)", params! {
             "id" => &data.id,
-            "applicant" => data.applicant.name(),
-            "reviewer" => data.reviewer.name(),
+            "applicant" => &data.applicant.phone,
+            "reviewer" => &data.reviewer.phone,
             "status" => do_if!(data.status == 1 => 1, 0),
             "ty" => data.ty,
             "create_time" => time.format(TimeFormat::YYYYMMDD_HHMMSS),
             "send_time" => time.format(TimeFormat::YYYYMMDD_HHMMSS),
-            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.name.as_bytes().to_vec())),
-            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.name.as_bytes().to_vec())),
+            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
+            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
             "contents" => &data.contents,
         })?;
     Ok(Response::empty())
@@ -225,10 +225,10 @@ async fn update_report(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     conn.exec_drop(format!("UPDATE report SET reviewer=:reviewer, ty=:ty, cc=:cc, ac=:ac, contents=:contents
         WHERE id = '{}' AND applicant = '{}' LIMIT 1 ", data.id, id), 
         params! {
-            "reviewer" => data.reviewer.name(),
+            "reviewer" => &data.reviewer.phone,
             "ty" => data.ty,
-            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.name.as_bytes().to_vec())),
-            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.name.as_bytes().to_vec())),
+            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
+            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
             "contents" => &data.contents 
         }
     )?;

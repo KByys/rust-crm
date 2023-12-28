@@ -1,4 +1,8 @@
-use axum::{http::HeaderMap, Json, Router, routing::{post, delete}};
+use axum::{
+    http::HeaderMap,
+    routing::{delete, post},
+    Json, Router,
+};
 use mysql::prelude::Queryable;
 use mysql_common::prelude::FromRow;
 use serde_json::json;
@@ -12,10 +16,10 @@ use crate::{
 
 pub fn colleague_router() -> Router {
     Router::new()
-    .route("/customer/colleague/info", post(query_colleagues))
-    .route("/customer/colleague/insert", post(add_colleague))
-    .route("/customer/colleague/update", post(update_colleague))
-    .route("/customer/colleague/delete", delete(delete_colleague))
+        .route("/customer/colleague/info", post(query_colleagues))
+        .route("/customer/colleague/insert", post(add_colleague))
+        .route("/customer/colleague/update", post(update_colleague))
+        .route("/customer/colleague/delete", delete(delete_colleague))
 }
 #[derive(serde::Deserialize, serde::Serialize, FromRow)]
 struct ColleagueInfos {
@@ -54,7 +58,7 @@ async fn add_colleague(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     let time = TIME::now()?;
     let id = gen_id(&time, &data.name);
     conn.query_drop(format!(
-        "INSERT INTO customer_colleague (customer_id, id, phone name) VALUES ('{}', '{}', '{}', '{}')",
+        "INSERT INTO customer_colleague (customer_id, id, phone, name) VALUES ('{}', '{}', '{}', '{}')",
         data.customer_id, id, data.phone, data.name
     ))?;
     Ok(Response::empty())
@@ -70,7 +74,7 @@ async fn update_colleague(
     }
     conn.query_drop(format!(
         "UPDATE customer_colleague SET phone = '{}', name = '{}' WHERE id = '{}' LIMIT 1",
-        data.name, data.phone, data.id
+        data.phone, data.name, data.id
     ))?;
     Ok(Response::empty())
 }

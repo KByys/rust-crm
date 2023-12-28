@@ -6,7 +6,6 @@ use crate::{
     do_if,
     libs::{
         gen_id,
-        perm::Identity,
         time::{TimeFormat, TIME},
     },
     parse_jwt_macro, Response, ResponseResult,
@@ -274,17 +273,18 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
         return Err(Response::permission_denied());
     }
     if !data.applicant.is_empty() {
-        filter.push_str(&format!("AND applicant = '{}'", data.applicant))
+        filter.push_str(&format!(" AND applicant = '{}'", data.applicant))
     }
     if !data.reviewer.is_empty() {
-        filter.push_str(&format!("AND reviewer = '{}'", data.reviewer))
+        filter.push_str(&format!(" AND reviewer = '{}'", data.reviewer))
     }
     if !data.cc.is_empty() {
-        filter.push_str(&format!("AND cc = '{}'", data.cc))
+        filter.push_str(&format!(" AND cc = '{}'", data.cc))
     }
     if !data.ac.is_empty() {
-        filter.push_str(&format!("AND ac = '{}'", data.ac))
+        filter.push_str(&format!(" AND ac = '{}'", data.ac))
     }
+    println!("{}", filter);
     let reports: Vec<Report> =
         conn.query_map(format!("SELECT * FROM report WHERE {filter}"), |r| r)?;
     let mut res = Vec::new();

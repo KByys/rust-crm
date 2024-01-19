@@ -83,6 +83,7 @@ use table::Table;
 use crate::{pages::DataOptions, Response, MYSQL_URI};
 pub fn create_table() -> Result<()> {
     let mut conn = get_conn()?;
+    conn.query_drop(Table::ROLE_TABLE)?;
     // 创建下拉框选项的表格
     for value in DataOptions::first() {
         conn.query_drop(value.table_statement())?;

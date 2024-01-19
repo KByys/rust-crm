@@ -4,17 +4,24 @@ pub struct Table;
 // 手机号码 15个字符
 
 impl Table {
-    /// administrator -1 总经理，0 管理员， 1 成员
+    
+    pub const ROLE_TABLE: &str = "CREATE TABLE IF NOT EXISTS roles(
+        name VARCHAR(30) NOT NULL,
+        perm VARCHAR(255) NOT NULL,
+        PRIMARY KEY (name)
+    )";
+
     pub const USER_TABLE: &str = "CREATE TABLE IF NOT EXISTS user(
             id VARCHAR(15) NOT NULL,
             name VARCHAR(20) NOT NULL,
             password BINARY(16) NOT NULL,
             department VARCHAR(30) NOT NULL,
             permissions INT NOT NULL,
-            identity INT NOT NULL,
+            role VARCHAR(30) NOT NULL,
             sex INT NOT NULL,
             PRIMARY KEY (id),
-            FOREIGN KEY (department) REFERENCES department(value)
+            FOREIGN KEY (department) REFERENCES department(value),
+            FOREIGN KEY (role) REFERENCES roles(name)
         )
     ";
     /// 客户数据

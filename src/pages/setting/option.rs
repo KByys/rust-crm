@@ -6,7 +6,7 @@ use crate::{
     bearer,
     database::{c_or_r, get_conn, Database},
     debug_info,
-    libs::{perm::Identity, time::TIME},
+    libs::time::TIME,
     parse_jwt_macro,
     response::Response,
     ResponseResult,
@@ -125,17 +125,19 @@ struct OptionValue {
     delete_value: String,
     next_value: String,
 }
-
+use crate::perm::{verify_permissions, action::OtherGroup};
 macro_rules! parse_option {
     ($headers:expr, $value:expr, $begin:expr) => {
         {
             let bearer = bearer!(&$headers);
             let mut conn = get_conn()?;
             let id = parse_jwt_macro!(&bearer, &mut conn => true);
-            match Identity::new(&id, &mut conn)? {
-                Identity::Boss => (),
-                _ => return Err(Response::permission_denied()),
+            
+            let role: String = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));
+            if !verify_permissions(&role, "other", OtherGroup::DROP_DOWN_BOX, None).await {
+                return Err(Response::permission_denied())
             }
+
             if $begin {
                 conn.query_drop("BEGIN")?;
             }

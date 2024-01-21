@@ -6,9 +6,9 @@ pub struct Table;
 impl Table {
     
     pub const ROLE_TABLE: &str = "CREATE TABLE IF NOT EXISTS roles(
-        name VARCHAR(30) NOT NULL,
-        perm VARCHAR(255) NOT NULL,
-        PRIMARY KEY (name)
+        id VARCHAR(50) NOT NULL,
+        name VARCHAR(50) NOT NULL,
+        PRIMARY KEY (id)
     )";
 
     pub const USER_TABLE: &str = "CREATE TABLE IF NOT EXISTS user(
@@ -16,12 +16,11 @@ impl Table {
             name VARCHAR(20) NOT NULL,
             password BINARY(16) NOT NULL,
             department VARCHAR(30) NOT NULL,
-            permissions INT NOT NULL,
-            role VARCHAR(30) NOT NULL,
+            role VARCHAR(50) NOT NULL,
             sex INT NOT NULL,
             PRIMARY KEY (id),
             FOREIGN KEY (department) REFERENCES department(value),
-            FOREIGN KEY (role) REFERENCES roles(name)
+            FOREIGN KEY (role) REFERENCES roles(id)
         )
     ";
     /// 客户数据

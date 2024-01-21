@@ -84,12 +84,19 @@ use crate::{pages::DataOptions, Response, MYSQL_URI};
 pub fn create_table() -> Result<()> {
     let mut conn = get_conn()?;
     conn.query_drop(Table::ROLE_TABLE)?;
+    conn.query_drop("
+        INSERT IGNORE INTO roles (id, name)  VALUES 
+            ('root', '总经理'), 
+            ('admin', '管理员'),
+            ('salesman', '销售员')
+    ")?;
     // 创建下拉框选项的表格
     for value in DataOptions::first() {
         conn.query_drop(value.table_statement())?;
     }
+    
     conn.query_drop("INSERT IGNORE INTO department VALUES ('总经办', '0000-00-00 00:00:00')")?;
-    conn.query_drop(Table::USER_TABLE)?;
+    conn.query_drop(Table::USER_TABLE).unwrap();
     // 设置token黑名单明个
     conn.query_drop(Table::TOKEN)?;
     conn.query_drop(

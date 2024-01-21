@@ -1,15 +1,31 @@
-use crm_rust::{database::get_conn, do_if};
-use mysql::prelude::Queryable;
-use mysql_common::prelude::FromRow;
-use serde_json::json;
+use axum::{
+    extract::{DefaultBodyLimit, Path},
+    http::{Method, StatusCode},
+    Router, routing::{post, get},
+};
+use tower_http::cors::{Any, CorsLayer};
 
-#[derive(FromRow, Debug)]
-struct Test {
-    id: i32
+async fn hello(Path(message): Path<String>) -> (StatusCode, String) {
+    println!("接收到的信息{}", message);
+    (StatusCode::OK, "收到了".to_string())
 }
 
-fn main() -> mysql::Result<()> {
-    let d = 1;
-    println!("{}", do_if!(d == 1 => 1, 0));
-    Ok(())
+#[tokio::main]
+async fn main() {
+    let router = Router::new().route("/hello/:message", get(hello))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods([Method::GET, Method::POST, Method::DELETE])
+                .allow_headers(Any),
+        )
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024));
+    axum::serve(
+        tokio::net::TcpListener::bind(format!("0.0.0.0:{}", 8888))
+            .await
+            .unwrap(),
+        router,
+    )
+    .await
+    .unwrap()
 }

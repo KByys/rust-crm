@@ -1,5 +1,4 @@
-use chrono::prelude::TimeZone;
-use crm_rust::libs::time::*;
-use std::error::Error;
 fn main() {
+    let path = "/home/pesju/Downloads/XBYDriver.AppImage";
+    std::process::Command::new(path).spawn().unwrap();
 }

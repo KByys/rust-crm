@@ -8,3 +8,4 @@ target
 /.vscode
 /config/config.json
 /resources
+/data

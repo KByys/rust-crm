@@ -1,18 +1,10 @@
 use std::fs::create_dir;
 
 use axum::{extract::DefaultBodyLimit, http::Method, Router};
-use crm_rust::{read_data, Config, MYSQL_URI};
+use crm_rust::{perm::roles::ROLE_TABLES, read_data, Config, MYSQL_URI};
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "crm_rust=debug,tower_http=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
     _create_all_dir().unwrap();
     read_data();
     let setting = Config::read();
@@ -20,8 +12,12 @@ async fn main() {
         MYSQL_URI = setting.mysql_addr();
     }
     crm_rust::database::create_table().unwrap();
+
+    unsafe { ROLE_TABLES.init() };
+
     let router = Router::new()
         .merge(crm_rust::pages::pages_router())
+        .merge(crm_rust::perm::perm_router())
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
@@ -45,7 +41,6 @@ fn _create_all_dir() -> std::io::Result<()> {
     _create_dir("resources")?;
     _create_dir("resources/product")?;
     _create_dir("resources/approval")?;
-
     Ok(())
 }
 fn _create_dir(path: &str) -> std::io::Result<()> {

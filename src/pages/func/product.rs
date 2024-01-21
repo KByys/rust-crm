@@ -14,12 +14,12 @@ use crate::{
     debug_info, do_if,
     libs::{
         parse_multipart,
-        perm::Identity,
         time::{TimeFormat, TIME},
         FilePart,
     },
-    pages::CUSTOM_FIELD_INFOS,
+    pages::{account::User, CUSTOM_FIELD_INFOS},
     parse_jwt_macro,
+    perm::ROLES_GROUP_MAP,
     response::BodyFile,
     Response, ResponseResult, TextInfos, ID,
 };
@@ -94,6 +94,11 @@ async fn add_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let u: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", id))?; ret Ok(Response::not_exist("用户不存在")));
+    // 验证是否具有添加产品的权限
+    if !check_product_perm(&u, "create").await {
+        return Err(Response::permission_denied());
+    }
     let data = parse_multipart(part).await?;
     let mut product: Product = serde_json::from_str(&data.json)?;
     debug_info(format!(
@@ -124,6 +129,20 @@ async fn add_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     Ok(Response::ok(json!({
         "id": product.base_infos.id
     })))
+}
+
+async fn check_product_perm(user: &User, action: &str) -> bool {
+    if user.role.eq("root") {
+        return true;
+    }
+    let lock = ROLES_GROUP_MAP.lock().await;
+    lock.get(&user.role)
+        .and_then(|p| {
+            p.get("product").map(|v| {
+                v.get(action).is_some()
+            })
+        })
+        .unwrap_or(false)
 }
 
 fn _insert(
@@ -176,8 +195,14 @@ async fn update_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let u: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", id))?; ret Ok(Response::not_exist("用户不存在")));
+    // 验证是否具有修改产品数据的权限
+    if !check_product_perm(&u, "update").await {
+        return Err(Response::permission_denied());
+    }
     let data = parse_multipart(part).await?;
     let mut product: Product = serde_json::from_str(&data.json)?;
+
     debug_info(format!(
         "用户 {id} 执行更新产品操作，具体数据为{:?}",
         product
@@ -325,9 +350,14 @@ async fn delete_product(
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    if let Identity::Staff(_, _) = Identity::new(&id, &mut conn)? {
+
+
+    let u: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", id))?; ret Ok(Response::not_exist("用户不存在")));
+    // 验证是否具有删除产品数据的权限
+    if !check_product_perm(&u, "delete").await {
         return Err(Response::permission_denied());
-    };
+    }
+
     let product_id: ID = serde_json::from_value(value)?;
     let product: Option<BaseInfos> = conn.query_first(format!(
         "SELECT * FROM product WHERE id = '{}'",

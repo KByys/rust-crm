@@ -6,11 +6,10 @@ use crate::{
     bearer,
     database::{c_or_r, catch_some_mysql_error, get_conn, Database},
     debug_info,
-    libs::{
-        perm::Identity,
-        time::{TimeFormat, TIME},
-    },
-    parse_jwt_macro, Response, ResponseResult,
+    libs::time::{TimeFormat, TIME},
+    parse_jwt_macro,
+    perm::{action::PERMISSION_GROUPS, verify_permissions, ROLES_GROUP_MAP, get_role},
+    Response, ResponseResult,
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -56,10 +55,12 @@ pub const CUSTOM_FIELD_INFOS: [[&str; 3]; 2] = [
     ],
 ];
 
-fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String, Response> {
+async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String, Response> {
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, conn => true);
-    if let Identity::Boss = Identity::new(&id, conn)? {
+    let mut conn = get_conn()?;
+    let role = get_role(&id, &mut conn)?;
+    if verify_permissions(&role, "other", "custom_field", None).await {
         Ok(id)
     } else {
         Err(Response::permission_denied())
@@ -87,7 +88,7 @@ impl CustomizeFieldType {
 }
 pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!("添加自定义字段，操作者：{}，数据：{:?}", id, value));
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.ty > 1 {
@@ -140,10 +141,10 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
 
     if !id.is_empty() {
         let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
-        let mut values: String = id
-            .iter()
-            .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
-            .collect();
+        let mut values: String = Iterator::map(id.iter(), |id| {
+            format!("('{}' ,'{}', ''),", param.value, id)
+        })
+        .collect();
         values.pop();
         let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
         println!("{}", query);
@@ -157,7 +158,7 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
 
 pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "添加自定义下拉字段的选项，操作者：{}，数据：{:?}",
         id, value
@@ -188,7 +189,7 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 
 pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义下拉字段，操作者：{}，数据：{:?}",
         id, value
@@ -238,7 +239,7 @@ fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 
 pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义下拉字段的选项，操作者：{}，数据：{:?}",
         id, value
@@ -257,7 +258,7 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 
 pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段，操作者：{}，数据：{:?}",
         id, value
@@ -300,7 +301,7 @@ fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 
 pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let id = verify_perm(headers, &mut conn)?;
+    let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段的选项，操作者：{}，数据：{:?}",
         id, value

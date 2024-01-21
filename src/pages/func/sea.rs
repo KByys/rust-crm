@@ -5,7 +5,6 @@ use crate::{
     database::get_conn,
     do_if,
     libs::{
-        perm::Identity,
         time::{TimeFormat, TIME},
     },
     parse_jwt_macro, Response, ResponseResult, ID, SEA_MAX_DAY, SEA_MIN_DAY,
@@ -112,19 +111,20 @@ async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResu
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Sea = serde_json::from_value(value)?;
-    let mut infos = match Identity::new(&id, &mut conn)? {
-        Identity::Administrator(_, d) => query(&mut conn, &data, &d)?,
-        Identity::Boss => query(&mut conn, &data, &data.department)?,
-        Identity::Staff(_, d) => query(&mut conn, &data, &d)?,
-    };
-    use rust_pinyin::get_pinyin;
-    infos.sort_by(|v1, v2| match data.sort {
-        0 => get_pinyin(&v1.name).cmp(&get_pinyin(&v2.name)),
-        1 => get_pinyin(&v1.company).cmp(&get_pinyin(&v2.company)),
-        2 => v1.time.cmp(&v2.time),
-        _ => Ordering::Equal,
-    });
-    Ok(Response::ok(json!(infos)))
+    // let mut infos = match Identity::new(&id, &mut conn)? {
+    //     Identity::Administrator(_, d) => query(&mut conn, &data, &d)?,
+    //     Identity::Boss => query(&mut conn, &data, &data.department)?,
+    //     Identity::Staff(_, d) => query(&mut conn, &data, &d)?,
+    // };
+    // use rust_pinyin::get_pinyin;
+    // infos.sort_by(|v1, v2| match data.sort {
+    //     0 => get_pinyin(&v1.name).cmp(&get_pinyin(&v2.name)),
+    //     1 => get_pinyin(&v1.company).cmp(&get_pinyin(&v2.company)),
+    //     2 => v1.time.cmp(&v2.time),
+    //     _ => Ordering::Equal,
+    // });
+    // Ok(Response::ok(json!(infos)))
+    todo!()
 }
 
 
@@ -170,7 +170,7 @@ struct SeaPerm {
 async fn set_sea_perm(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
-    parse_jwt_macro!(&bearer, &mut conn);
+    parse_jwt_macro!(&bearer, &mut conn => true);
     let data: SeaPerm = serde_json::from_value(value)?;
     unsafe {
         SEA_MIN_DAY = data.min_day;

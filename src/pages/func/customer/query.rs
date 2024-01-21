@@ -4,13 +4,16 @@ use axum::{http::HeaderMap, Json};
 use chrono::prelude::TimeZone;
 use chrono::{Days, Months};
 use mysql::{prelude::Queryable, PooledConn};
+use op::ternary;
 use serde_json::{json, Value};
 
 use crate::do_if;
 use crate::libs::time::{TimeFormat, TIME};
+use crate::pages::account::get_user;
+use crate::perm::verify_permissions;
 use crate::{
-    bearer, database::get_conn, libs::perm::Identity, pages::CUSTOM_FIELD_INFOS, parse_jwt_macro,
-    Response, ResponseResult, TextInfos,
+    bearer, database::get_conn, pages::CUSTOM_FIELD_INFOS, parse_jwt_macro, Response,
+    ResponseResult, TextInfos,
 };
 
 use super::{CCInfos, Customer, FCInfos};
@@ -81,7 +84,7 @@ pub async fn qc_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseR
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ReceiveInfo = serde_json::from_value(value)?;
-    let customers = query_all_customers_infos(id, &data, &mut conn)?;
+    let customers = query_all_customers_infos(id, &data, &mut conn).await?;
     Ok(Response::ok(json!(customers)))
 }
 
@@ -92,7 +95,7 @@ pub async fn qc_infos_with_pages(headers: HeaderMap, Json(value): Json<Value>) -
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ReceiveInfo = serde_json::from_value(value)?;
-    let customers = query_all_customers_infos(id, &data, &mut conn)?;
+    let customers = query_all_customers_infos(id, &data, &mut conn).await?;
     if data.page_size == 0 {
         return Err(Response::invalid_value("page_size不允许为0"));
     };
@@ -120,7 +123,7 @@ pub async fn qc_infos_with_pages(headers: HeaderMap, Json(value): Json<Value>) -
         })))
     }
 }
-fn query_all_customers_infos(
+async fn query_all_customers_infos(
     id: String,
     data: &ReceiveInfo,
     conn: &mut PooledConn,
@@ -135,12 +138,19 @@ fn query_all_customers_infos(
         0 => qm_customers(&data.filter, &id, &status, conn)?,
         1 => qs_customers(&data.filter, &status, conn)?,
         2 => {
-            let depart = match Identity::new(&id, conn)? {
-                Identity::Boss => data.scope.info.clone(),
-                Identity::Administrator(_, depart) => depart,
-                _ => return Err(Response::permission_denied()),
+            let u = get_user(&id, conn)?;
+            let depart = {
+                if data.scope.info.is_empty() {
+                    let flag = verify_permissions(&u.role, "customer", "query", None).await;
+                    ternary!(flag => &u.department; return Err(Response::permission_denied()))
+                } else {
+                    ternary!(u.department.eq(&data.scope.info) => &u.department; {
+                        let flag = verify_permissions(&u.role, "customer", "query", Some(&["all"])).await;
+                        ternary!(flag => &u.department;return Err(Response::permission_denied()))
+                    })
+                }
             };
-            qc_with_d(&data.filter, &depart, &status, conn)?
+            qc_with_d(&data.filter, depart, &status, conn)?
         }
         ty => return Err(Response::invalid_value(format!("scope的ty: {} 非法", ty))),
     };
@@ -204,7 +214,6 @@ fn qs_customers(f: &Info, status: &str, conn: &mut PooledConn) -> VecCustomer {
 }
 /// 查询我的客户信息
 fn qm_customers(f: &Info, id: &str, status: &str, conn: &mut PooledConn) -> VecCustomer {
-
     let query = query_statement(format!("salesman = '{}' AND {}", id, gen_filter(f, status)));
     println!("{}", query);
     conn.query_map(query, |f| f)

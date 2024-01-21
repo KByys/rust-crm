@@ -109,22 +109,22 @@ impl JWToken {
 #[macro_export]
 macro_rules! parse_jwt_macro {
     // 解析token，从中获取id信息, 同时验证权限，仅最高权限者可通过
-    ($bearer:expr, $conn:expr) => {{
-        match $crate::token::parse_jwt($bearer) {
-            Some(jwt) => {
-                if jwt.sub && jwt.verify($conn)?.is_ok() {
-                    use $crate::libs::perm::Identity;
-                    match Identity::new(&jwt.id, $conn)? {
-                        Identity::Boss => jwt.id,
-                        _ => return Err(Response::permission_denied()),
-                    }
-                } else {
-                    return Err($crate::Response::token_error("Invalid Token"));
-                }
-            }
-            _ => return Err($crate::Response::token_error("Invalid Token")),
-        }
-    }};
+    // ($bearer:expr, $conn:expr) => {{
+    //     match $crate::token::parse_jwt($bearer) {
+    //         Some(jwt) => {
+    //             if jwt.sub && jwt.verify($conn)?.is_ok() {
+    //                 use $crate::libs::perm::Identity;
+    //                 match Identity::new(&jwt.id, $conn)? {
+    //                     Identity::Boss => jwt.id,
+    //                     _ => return Err(Response::permission_denied()),
+    //                 }
+    //             } else {
+    //                 return Err($crate::Response::token_error("Invalid Token"));
+    //             }
+    //         }
+    //         _ => return Err($crate::Response::token_error("Invalid Token")),
+    //     }
+    // }};
     // 解析token，从中获取id信息
     ($bearer:expr, $conn:expr => $sub:expr) => {
         match $crate::token::parse_jwt($bearer) {

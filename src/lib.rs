@@ -1,6 +1,9 @@
+
+pub mod perm;
 pub mod response;
 pub mod token;
 
+#[allow(elided_lifetimes_in_associated_constant)]
 pub mod database;
 pub mod libs;
 pub mod pages;

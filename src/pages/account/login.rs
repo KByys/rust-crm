@@ -8,7 +8,7 @@ use crate::{
     debug_info,
     response::Response,
     token::{generate_jwt, parse_jwt, TokenVerification},
-    ResponseResult,
+    ResponseResult, perm::ROLES_GROUP_MAP,
 };
 
 use super::User;
@@ -21,6 +21,7 @@ struct LoginID {
 
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
+    println!("{}", value);
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
         let token = match parse_jwt(&bearer) {
             Some(token) if !token.sub => {
@@ -29,11 +30,11 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
             None => return Err(Response::token_error("Invalid token")),
             Some(token) => token,
         };
-        let btn: Option<i64> = conn.query_first(format!(
-            "SELECT btn FROM token WHERE ty = 0 AND id = '{}'",
+        let tbn: Option<i64> = conn.query_first(format!(
+            "SELECT tbn FROM token WHERE ty = 0 AND id = '{}'",
             token.id
         ))?;
-        if btn.is_some_and(|btn| btn >= token.iat) {
+        if tbn.is_some_and(|tbn| tbn >= token.iat) {
             return Err(Response::token_error("token已过期，无法刷新，请重新登录"));
         }
 
@@ -72,7 +73,12 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
                 Err(Response::wrong_password())
             } else {
                 let token = generate_jwt(true, &user.id);
-                Ok(Response::ok(json!({"token": token, "info": user})))
+                if user.role.eq("root") {
+                    Ok(Response::ok(json!({"token": token, "info": user, "perms": "all"})))
+                } else {
+                    let perms = ROLES_GROUP_MAP.lock().await;
+                    Ok(Response::ok(json!({"token": token, "info": user, "perms": perms.get(&user.role)})))
+                }
             }
         } else {
             Err(Response::not_exist(format!("{} 用户不存在", user.id)))

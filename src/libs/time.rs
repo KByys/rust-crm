@@ -46,18 +46,6 @@ impl From<DateTime<Local>> for TIME {
         }
     }
 }
-#[test]
-fn test() {
-    let time = TIME {
-        naos: 0,
-        year: 2,
-        month: 2,
-        day: 3,
-        ..Default::default()
-    };
-    println!("{}", time.format(TimeFormat::YYYYMMDD_HHMMSS))
-}
-
 impl TIME {
     /// 获取当前的时间
     pub fn now() -> Result<Self, SystemTimeError> {

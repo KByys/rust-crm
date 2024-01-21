@@ -8,7 +8,7 @@ use crate::{
     debug_info,
     libs::time::{TimeFormat, TIME},
     pages::CUSTOM_FIELD_INFOS,
-    parse_jwt_macro, Response, ResponseResult,
+    parse_jwt_macro, Response, ResponseResult, perm::{get_role, verify_permissions},
 };
 
 use super::{Customer, CUSTOMER_FIELDS};
@@ -17,6 +17,10 @@ pub async fn insert_customer(headers: HeaderMap, Json(value): Json<Value>) -> Re
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let role = get_role(&id, &mut conn)?;
+    if !verify_permissions(&role, "customer", "enter_customer_data", None).await {
+        return Err(Response::permission_denied());
+    }
     debug_info(format!("添加客户，操作者：{}， 数据: {:?}", id, value));
     let mut data: Customer = serde_json::from_value(value)?;
     data.fixed_infos.salesman = {

@@ -134,7 +134,7 @@ macro_rules! parse_option {
             let id = parse_jwt_macro!(&bearer, &mut conn => true);
             
             let role: String = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));
-            if role.eq("root") || !verify_permissions(&role, "other", OtherGroup::DROP_DOWN_BOX, None).await {
+            if !role.eq("root") && !verify_permissions(&role, "other", OtherGroup::DROP_DOWN_BOX, None).await {
                 return Err(Response::permission_denied())
             }
 

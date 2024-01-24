@@ -3,6 +3,7 @@ use mysql::{prelude::Queryable, PooledConn};
 use crate::database::get_conn;
 
 pub static mut ROLE_TABLES: RoleTable = RoleTable::empty();
+#[derive(Debug)]
 pub struct RoleTable {
     table: [(String, String); 20],
     pos: usize,
@@ -39,7 +40,7 @@ impl RoleTable {
     pub fn init(&mut self) {
         let mut conn = get_conn().expect("初始化角色表时连接数据库失败");
         let map: Vec<(String, String)> = conn
-            .query_map("SELECT id, name FROM roles", |(id, name)| (name, id))
+            .query_map("SELECT id, name FROM roles", |(id, name)| (id, name))
             .expect("初始化角色表时查询失败");
         for (i, (id, name)) in map.into_iter().enumerate() {
             self.table[i] = (id, name);
@@ -47,7 +48,6 @@ impl RoleTable {
         }
     }
     pub fn update(&mut self, conn: &mut PooledConn) -> mysql::Result<()> {
-        let mut conn = get_conn()?;
         let map: Vec<(String, String)> =
             conn.query_map("SELECT id, name FROM roles", |(id, name)| (name, id))?;
         self.table = TABLE.clone();

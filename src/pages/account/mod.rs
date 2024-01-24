@@ -1,4 +1,4 @@
-use axum::{http::HeaderMap, routing::post, Json, Router};
+use axum::{http::HeaderMap, routing::{get, post}, Json, Router};
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use op::ternary;
@@ -44,7 +44,15 @@ pub fn account_router() -> Router {
         .route("/user/register", post(register::register_user))
         .route("/user/set/psw", post(set_user_password))
         .route("/customer/set/psw", post(set_customer_password))
+        .route("/role/infos", get(get_role))
 }
+
+async fn get_role() -> ResponseResult {
+    let mut conn = get_conn()?;
+    let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String|s)?;
+    Ok(Response::ok(json!(roles)))
+}
+
 #[derive(serde::Deserialize)]
 struct Password {
     password: String,

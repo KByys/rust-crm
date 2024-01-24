@@ -72,6 +72,7 @@ pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
 // }
 
 pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+    println!("{:#?}", headers);
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
@@ -87,7 +88,7 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
             register_infos.id
         )));
     }
-    let (role, department) = op::some!(conn.query_first::<(String, String), String>(format!("SELECT role FROM user WHERE id = '{id}' LIMIT 1"))?; ret Err(Response::unknown_err("意外")));
+    let (role, department) = op::some!(conn.query_first::<(String, String), String>(format!("SELECT role, department FROM user WHERE id = '{id}' LIMIT 1"))?; ret Err(Response::unknown_err("意外")));
 
     if role.eq("root") {
         if register_infos.department.eq("总经办") {

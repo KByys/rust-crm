@@ -142,7 +142,7 @@ pub static OTHER_GROUP: [&str; 5] = [
 pub struct OtherGroup;
 
 impl OtherGroup {
-    pub const QUERT_CHECK_IN: &str = "query_check_in";
+    pub const QUERT_CHECK_IN: &str = "query_sign_in";
     pub const CUSTOM_FIELD: &str = "custom_field";
     pub const DROP_DOWN_BOX: &str = "drop_down_box";
     pub const SEA_RULE: &str = "sea_rule";

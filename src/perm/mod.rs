@@ -1,7 +1,7 @@
 pub mod roles;
 use std::collections::HashMap;
 
-use crate::{bearer, database::get_conn, parse_jwt_macro, Response, ResponseResult};
+use crate::{bearer, database::get_conn, parse_jwt_macro, perm::roles::ROLE_TABLES, Response, ResponseResult};
 use axum::{http::HeaderMap, routing::post, Router};
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::json;
@@ -58,7 +58,7 @@ lazy_static::lazy_static! {
         } else {
             let mut map = HashMap::new();
             map.insert("salesman".to_owned(), role_salesman());
-            map.insert("admin".to_owned(), role_adm());
+            map.insert("admin".to_owned(), unsafe { role_adm() });
 
             std::fs::write("data/perm", json!(map.clone()).to_string().as_bytes()).expect("写入权限文件失败");
             map
@@ -98,7 +98,7 @@ fn role_salesman() -> PermissionGroupMap {
     map
 }
 
-fn role_adm() -> PermissionGroupMap {
+unsafe fn role_adm() -> PermissionGroupMap {
     use action::*;
     let mut map = HashMap::new();
     map.insert(
@@ -107,8 +107,8 @@ fn role_adm() -> PermissionGroupMap {
     );
     map.insert("account".to_owned(), {
         let mut map = HashMap::new();
-        map.insert(AccountGroup::CREATE.to_owned(), vec!["销售人员".to_owned()]);
-        map.insert(AccountGroup::DELETE.to_owned(), vec!["销售人员".to_owned()]);
+        map.insert(AccountGroup::CREATE.to_owned(), vec![ROLE_TABLES.get_name_uncheck("salesman")]);
+        map.insert(AccountGroup::DELETE.to_owned(), vec![ROLE_TABLES.get_name_uncheck("salesman")]);
         map
     });
     map.insert("approval".to_owned(), {

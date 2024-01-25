@@ -66,6 +66,9 @@ impl RoleTable {
         }
         None
     }
+    pub fn get_name_uncheck(&self, id: &str) -> String {
+        self.get_name(id).unwrap().to_owned()
+    }
     pub fn get_id(&self, name: &str) -> Option<&str> {
         for (id, name_k) in &self.table[..self.pos] {
             if name == name_k {

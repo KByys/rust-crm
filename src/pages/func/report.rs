@@ -1,14 +1,10 @@
 use std::cmp::Ordering;
 
 use crate::{
-    bearer,
-    database::get_conn,
-    do_if,
-    libs::{
+    bearer, common::{empty_deserialize_to_none, Person}, database::get_conn, do_if, libs::{
         gen_id,
         time::{TimeFormat, TIME},
-    },
-    parse_jwt_macro, Response, ResponseResult,
+    }, parse_jwt_macro, Response, ResponseResult
 };
 use axum::{
     http::HeaderMap,
@@ -17,11 +13,10 @@ use axum::{
 };
 use mysql::{
     params,
-    prelude::{FromValue, Queryable},
+    prelude::Queryable,
     PooledConn,
 };
 use mysql_common::prelude::FromRow;
-use serde::{Deserialize, Deserializer};
 use serde_json::json;
 
 pub fn report_router() -> Router {
@@ -35,82 +30,78 @@ pub fn report_router() -> Router {
         .route("/report/get/reply", get(get_report_replies))
 }
 
-#[derive(Debug, serde::Serialize, Default, Eq)]
-struct User {
-    name: String,
-    phone: String,
-}
-impl PartialEq for User {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-impl PartialOrd for User {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.name.partial_cmp(&other.name)
-    }
-}
-impl Ord for User {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.name.cmp(&other.name)
-    }
-}
-impl User {
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-impl<'de> serde::Deserialize<'de> for User {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let name: String = serde::Deserialize::deserialize(deserializer)?;
-        Ok(User::from(name))
-    }
-}
-impl From<String> for User {
-    fn from(phone: String) -> Self {
-        User {
-            phone,
-            name: String::new(),
-        }
-    }
-}
-impl FromValue for User {
-    type Intermediate = String;
-}
+// #[derive(Debug, serde::Serialize, Default, Eq)]
+// struct User {
+//     name: String,
+//     phone: String,
+// }
+// impl PartialEq for User {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.name == other.name
+//     }
+// }
+// #[allow(clippy::non_canonical_partial_ord_impl)]
+// impl PartialOrd for User {
+//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+//         self.name.partial_cmp(&other.name)
+//     }
+// }
+// impl Ord for User {
+//     fn cmp(&self, other: &Self) -> Ordering {
+//         self.name.cmp(&other.name)
+//     }
+// }
+// impl<'de> serde::Deserialize<'de> for User {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: serde::Deserializer<'de>,
+//     {
+//         let name: String = serde::Deserialize::deserialize(deserializer)?;
+//         Ok(User::from(name))
+//     }
+// }
+// impl From<String> for User {
+//     fn from(phone: String) -> Self {
+//         User {
+//             phone,
+//             name: String::new(),
+//         }
+//     }
+// }
+// impl FromValue for User {
+//     type Intermediate = String;
+// }
 #[derive(Debug, serde::Serialize, FromRow)]
 struct ReportReply {
     id: String,
     contents: String,
-    respondent: User,
+    respondent: Person,
     create_time: String,
     report_id: String,
 }
-fn deserialize_empty_to_none<'de, D>(de: D) -> Result<Option<User>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let value: Option<String> = Deserialize::deserialize(de)?;
-    Ok(value.and_then(|v| do_if!(v.is_empty() => None, Some(User::from(v)))))
-}
+// fn deserialize_empty_to_none<'de, D>(de: D) -> Result<Option<User>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     let value: Option<String> = Deserialize::deserialize(de)?;
+//     Ok(value.and_then(|v| do_if!(v.is_empty() => None, Some(User::from(v)))))
+// }
 #[derive(Debug, serde::Deserialize, serde::Serialize, FromRow)]
 pub struct Report {
     #[serde(default)]
     id: String,
     #[serde(default)]
-    applicant: User,
-    reviewer: User,
+    applicant: Person,
+    reviewer: Person,
     ty: usize,
     #[serde(default)]
     status: usize,
     #[serde(skip_deserializing)]
     create_time: String,
-    #[serde(deserialize_with = "deserialize_empty_to_none")]
-    cc: Option<User>,
-    #[serde(deserialize_with = "deserialize_empty_to_none")]
-    ac: Option<User>,
+    #[serde(deserialize_with = "empty_deserialize_to_none")]
+    cc: Option<Person>,
+    #[serde(deserialize_with = "empty_deserialize_to_none")]
+    ac: Option<Person>,
     contents: String,
     #[serde(skip_deserializing)]
     send_time: Option<String>,
@@ -120,13 +111,13 @@ pub struct Report {
     opinion: Option<String>,
 }
 impl Report {
-    fn ac(&self) -> Option<&User> {
+    fn ac(&self) -> Option<&Person> {
         match &self.ac {
             Some(ac) => Some(ac),
             _ => None,
         }
     }
-    fn cc(&self) -> Option<&User> {
+    fn cc(&self) -> Option<&Person> {
         match &self.cc {
             Some(ac) => Some(ac),
             _ => None,
@@ -143,7 +134,7 @@ async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) ->
     if !(0..3).contains(&data.ty) {
         return Err(Response::invalid_value("ty的值不对"));
     }
-    data.applicant = User::from(id);
+    data.applicant = Person::from(id);
     let time = TIME::now()?;
     data.id = gen_id(
         &time,
@@ -309,14 +300,14 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     sort_reports(&mut res, data.sort);
     Ok(Response::ok(json!(res)))
 }
-fn get_name(conn: &mut PooledConn, u: Option<&User>, table: &str) -> Option<User> {
+fn get_name(conn: &mut PooledConn, u: Option<&Person>, table: &str) -> Option<Person> {
     let u = u?;
     conn.query_first(format!(
         "SELECT id, name FROM {table} WHERE id = '{}'",
         u.phone
     ))
     .ok()
-    .and_then(|r| r.map(|(phone, name)| User { name, phone }))
+    .and_then(|r| r.map(|(phone, name)| Person { name, phone }))
 }
 fn sort_reports(data: &mut [ResponseData], sort: usize) {
     let sort = match sort {

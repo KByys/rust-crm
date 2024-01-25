@@ -1,3 +1,4 @@
+mod sign;
 mod appointment;
 mod product;
 mod report;
@@ -11,4 +12,5 @@ pub fn func_router() -> Router {
         .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
+        .merge(sign::sign_router())
 }

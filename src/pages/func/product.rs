@@ -13,9 +13,7 @@ use crate::{
     database::{c_or_r, c_or_r_more, get_conn},
     debug_info, do_if,
     libs::{
-        parse_multipart,
-        time::{TimeFormat, TIME},
-        FilePart,
+        gen_file_link, parse_multipart, time::{TimeFormat, TIME}, FilePart
     },
     pages::{account::User, CUSTOM_FIELD_INFOS},
     parse_jwt_macro,
@@ -117,13 +115,11 @@ async fn add_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
         rand::random::<u8>()
     ));
     product.base_infos.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
-    product.base_infos.cover = if let Some(file) = data.files.first() {
+    product.base_infos.cover =  data.files.first().map(|file| {
         let filename = file.filename.as_deref().unwrap_or("unknown.jpg");
         let base64_path = base64_encode(filename);
-        Some(base64_path)
-    } else {
-        None
-    };
+        base64_path
+    });
     conn.query_drop("BEGIN")?;
     c_or_r_more(_insert, &mut conn, &product, data.files.first())?;
     Ok(Response::ok(json!({
@@ -220,13 +216,11 @@ async fn update_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     ));
     product.base_infos.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     let cover = product.base_infos.cover.clone();
-    product.base_infos.cover = if let Some(file) = data.files.first() {
+    let file_link = data.files.first().map(|file| {
         let filename = file.filename.as_deref().unwrap_or("unknown.jpg");
-        let base64_path = base64_encode(filename);
-        Some(base64_path)
-    } else {
-        product.base_infos.cover
-    };
+        gen_file_link(&time, filename)
+    });
+    product.base_infos.cover = op::ternary!(file_link.is_some() => file_link;  product.base_infos.cover);
     conn.query_drop("BEGIN")?;
     c_or_r_more(_update, &mut conn, &product, (data.files.first(), cover))?;
     Ok(Response::ok(json!({

@@ -264,13 +264,25 @@ pub async fn query_option_value() -> ResponseResult {
 pub async fn query_specific_info(Path(ty): Path<usize>) -> ResponseResult {
     if ty < DataOptions::max() {
         let mut conn = get_conn()?;
-        let info: Vec<String> = conn.query_map(
-            format!(
-                "SELECT value FROM {} ORDER BY create_time",
-                DataOptions::from(ty).table_name()
-            ),
-            |value| value,
-        )?;
+        let info: Vec<String> =  if ty == 3 {
+
+            conn.query_map(
+                format!(
+                    "SELECT value FROM {} WHERE value != '总经办' ORDER BY create_time",
+                    DataOptions::from(ty).table_name()
+                ),
+                |value| value,
+            )?
+        } else {
+            
+            conn.query_map(
+                format!(
+                    "SELECT value FROM {} ORDER BY create_time",
+                    DataOptions::from(ty).table_name()
+                ),
+                |value| value,
+            )?
+        };
         Ok(Response::ok(json!({"ty": ty, "info": info})))
     } else {
         Err(Response::invalid_value(format!("ty: {} 错误", ty)))

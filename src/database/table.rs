@@ -84,11 +84,14 @@ impl Table {
     ///
     /// file 为附件的base64编码地址，如果有多个附件则用`&`隔开
     pub const SING_TABLE: &str = "CREATE TABLE IF NOT EXISTS sign(
+            id VARCHAR(150) NOT NULL,
             signer VARCHAR(15) NOT NULL,
             customer VARCHAR(15),
             address VARCHAR(150),
             sign_time VARCHAR(25),
-            file TEXT
+            file TEXT,
+            content TEXT,
+            PRIMARY KEY (id)
         )
     ";
 

@@ -10,7 +10,7 @@ use axum::{
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json::{json, Value};
 
-use crate::base64_decode;
+use crate::{base64_decode, libs::parse_file_link};
 /// 响应数据
 #[derive(Debug)]
 pub struct Response {
@@ -177,44 +177,40 @@ impl BodyFile {
         url: &str,
     ) -> Result<Self, (StatusCode, String)> {
         let mut path = parent.as_ref().to_path_buf();
-        let decode_bytes = base64_decode(url).map_err(|e| {
-            (
-                StatusCode::NOT_ACCEPTABLE,
-                format!("地址解析错误，具体信息为：{e}"),
-            )
-        })?;
-        // filename.xxx?3846956
-        let decode_str = String::from_utf8_lossy(&decode_bytes).to_string();
+        // let decode_bytes = base64_decode(url).map_err(|e| {
+        //     (
+        //         StatusCode::NOT_ACCEPTABLE,
+        //         format!("地址解析错误，具体信息为：{e}"),
+        //     )
+        // })?;
+        // // filename.xxx?3846956
+        // let decode_str = String::from_utf8_lossy(&decode_bytes).to_string();
         path.push(url);
         if !path.is_file() {
             return Err((StatusCode::NOT_FOUND, "找不到该地址指向的文件".to_string()));
         }
-        let bytes = std::fs::read(&path).map_err(|e| {
+        let body = std::fs::read(&path).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("内部错误，具体信息为：{e}"),
             )
         })?;
-        let split: Vec<&str> = decode_str.splitn(2, '?').collect();
-        if let Some(filename) = split.first() {
-            let p = PathBuf::from(filename);
-            let mime = if let Some(ext) = p.extension() {
-                match ext.to_string_lossy().as_ref() {
-                    "jpeg" | "jpg" => "image/jpeg",
-                    "png" => "image/png",
-                    // 待定
-                    _ => "image/png",
-                }
-            } else {
-                "text/plain"
-            };
-            Ok(Self {
-                body: bytes,
-                filename: filename.to_string(),
-                mime,
-            })
+        let filename = op::result!(parse_file_link(url); ret Err((StatusCode::INTERNAL_SERVER_ERROR, "链接解析错误".into())));
+        let p = PathBuf::from(&filename);
+        let mime = if let Some(ext) = p.extension() {
+            match ext.to_string_lossy().as_ref() {
+                "jpeg" | "jpg" => "image/jpeg",
+                "png" => "image/png",
+                // 待定
+                _ => "image/png",
+            }
         } else {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, "地址解析错误".to_owned()))
-        }
+            "text/plain"
+        };
+        Ok(Self {
+            body,
+            filename,
+            mime,
+        })
     }
 }

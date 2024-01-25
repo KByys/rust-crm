@@ -12,7 +12,7 @@ use crate::{
     ResponseResult,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(usize)]
 pub enum DataOptions {
     CustomerType,
@@ -175,6 +175,9 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
     let opt = DataOptions::from(param.ty);
 
     if let DataOptions::Department = opt {
+        if param.info.old_value.eq("总经办") || param.info.new_value.eq("总经办") {
+            return Err(Response::invalid_value("总经办这个部门不允许做任何操作"));
+        }
         conn.query_drop(format!(
             "UPDATE user SET department = '{}' WHERE department = '{}'",
             param.info.new_value, param.info.old_value
@@ -192,7 +195,12 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
 pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let (id, mut conn, info) = parse_option!(headers, value, true);
     debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:?}", id, info));
+
     if info.ty == DataOptions::Department as usize {
+        if info.info.value.eq("总经办") {
+
+            return Err(Response::invalid_value("总经办这个部门不允许做任何操作"));
+        }
         let depart: Option<String> = conn.query_first(format!(
             "SELECT value FROM department WHERE value = '{}'",
             info.info.next_value
@@ -225,13 +233,25 @@ pub async fn query_option_value() -> ResponseResult {
     let mut data = Vec::new();
     let mut conn = get_conn()?;
     for opt in DataOptions::first() {
-        let info: Vec<String> = conn.query_map(
-            format!(
-                "SELECT value FROM {} ORDER BY create_time",
-                opt.table_name()
-            ),
-            |value| value,
-        )?;
+       let info: Vec<String> = if opt == DataOptions::Department {
+            conn.query_map(
+               format!(
+                   "SELECT value FROM {} WHERE value != '总经办' ORDER BY create_time",
+                   opt.table_name() 
+               ),
+               |value| value,
+           )?
+
+        } else {
+
+            conn.query_map(
+               format!(
+                   "SELECT value FROM {} ORDER BY create_time",
+                   opt.table_name()
+               ),
+               |value| value,
+           )?
+        };
         let ty = opt as usize;
         data.push(json!({
             "ty": ty,

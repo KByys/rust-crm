@@ -3,12 +3,7 @@ use mysql::prelude::Queryable;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer,
-    database::get_conn,
-    debug_info,
-    response::Response,
-    token::{generate_jwt, parse_jwt, TokenVerification},
-    ResponseResult, perm::ROLES_GROUP_MAP,
+    bearer, database::get_conn, debug_info, pages::account::get_user, perm::ROLES_GROUP_MAP, response::Response, token::{generate_jwt, parse_jwt, TokenVerification}, ResponseResult
 };
 
 use super::User;
@@ -40,12 +35,24 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
 
         match token.verify(&mut conn)? {
             TokenVerification::Ok => {
-                let data: Option<User> =
-                    conn.query_first(format!("SELECT * FROM user WHERE id = {}", token.id))?;
-                Ok(Response::ok(json!({
-                    "token": bearer.token(),
-                    "info": data
-                })))
+                let user: User =
+                    op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = {}", token.id))?; ret Err(Response::not_exist("用户不存在")));
+                println!("role is {}", user.role);
+                if user.role.eq("root") {
+                    Ok(Response::ok(json!({
+                        "token": bearer.token(),
+                        "perm": "all",
+                        "info": user
+                    })))
+                } else {
+                    let perms = ROLES_GROUP_MAP.lock().await;
+                    println!("{:#?}", perms);
+                    Ok(Response::ok(json!({
+                        "token": bearer.token(),
+                        "perm": perms.get(&user.role),
+                        "info": user
+                    })))
+                }
             }
             TokenVerification::Expired => {
                 if token.is_refresh() {
@@ -72,6 +79,7 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
             if user.password.as_slice() != digest.0.as_slice() {
                 Err(Response::wrong_password())
             } else {
+                println!("{:?}", user);
                 let token = generate_jwt(true, &user.id);
                 if user.role.eq("root") {
                     Ok(Response::ok(json!({"token": token, "info": user, "perms": "all"})))

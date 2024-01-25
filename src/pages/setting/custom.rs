@@ -60,7 +60,7 @@ async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String
     let id = parse_jwt_macro!(&bearer, conn => true);
     let mut conn = get_conn()?;
     let role = get_role(&id, &mut conn)?;
-    if verify_permissions(&role, "other", "custom_field", None).await {
+    if role.eq("root") || verify_permissions(&role, "other", "custom_field", None).await {
         Ok(id)
     } else {
         Err(Response::permission_denied())

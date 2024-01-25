@@ -309,6 +309,7 @@ pub async fn get_custom_info_with(Path(ty): Path<usize>) -> ResponseResult {
             |value: String| value,
         )
     };
+    op::ternary!(ty >= 2 => return Err(Response::invalid_value("ty 错误")); ());
     let text_infos = query_values(CUSTOM_FIELDS[ty][0], &mut conn)?;
     let time_infos = query_values(CUSTOM_FIELDS[ty][1], &mut conn)?;
     let _box_infos: Vec<_> = query_values(CUSTOM_FIELDS[ty][2], &mut conn)?;

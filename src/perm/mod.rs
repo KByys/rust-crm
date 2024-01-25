@@ -58,7 +58,7 @@ lazy_static::lazy_static! {
         } else {
             let mut map = HashMap::new();
             map.insert("salesman".to_owned(), role_salesman());
-            map.insert("adm".to_owned(), role_adm());
+            map.insert("admin".to_owned(), role_adm());
 
             std::fs::write("data/perm", json!(map.clone()).to_string().as_bytes()).expect("写入权限文件失败");
             map

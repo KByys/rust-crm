@@ -120,20 +120,6 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
         table, param.value, create_time
     ))?;
     let id: Vec<String> = if param.ty == 0 {
-        // if !customers_id.is_empty() {
-        //     let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
-        //     let mut values: String = customers_id
-        //         .iter()
-        //         .map(|id| format!("('{}' ,'{}', ''),", param.value, id))
-        //         .collect();
-        //     values.pop();
-        //     let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
-        //     println!("{}", query);
-        //     conn.query_drop(format!(
-        //         "INSERT INTO {table} (display, id, value) VALUES {}",
-        //         values
-        //     ))?;
-        // }
         conn.query_map("SELECT id FROM customer", |s| s)?
     } else {
         conn.query_map("SELECT id FROM product", |s| s)?

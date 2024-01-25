@@ -70,3 +70,28 @@ pub fn gen_id(time: &TIME, name: &str) -> String {
         rand::random::<u8>()
     ))
 }
+
+pub fn gen_file_link(time: &TIME, name: &str) -> String {
+    base64_encode(format!(
+        "{}\0{}?{}",
+        name,
+        time.naos() / 10000,
+        rand::random::<u8>()
+    ))
+}
+#[test]
+fn test() {
+    let time = TIME::now().unwrap();
+    let link = gen_file_link(&time, "test.png");
+    println!("{:?}", link);
+    let parse = parse_file_link(&link);
+    println!("{:?}", parse.unwrap());
+}
+
+
+pub fn parse_file_link(link: &str) -> Result<String, Response> {
+    let decode_bytes = base64_decode(link)?;
+    let split: Vec<_> = decode_bytes.splitn(2, |b|*b == 0).collect();
+    let bytes =  *op::some!(split.first(); ret Err(Response::invalid_value("文件链接解析错误")));
+    Ok(String::from_utf8_lossy(bytes).to_string())
+}

@@ -151,6 +151,9 @@ pub async fn verify_permissions(
     action: &str,
     data: Option<&[&str]>,
 ) -> bool {
+    if role.eq("root") {
+        return true;
+    }
     let role_perm_maps = ROLES_GROUP_MAP.lock().await;
     let role_perms = op::some!(role_perm_maps.get(role); ret false);
 

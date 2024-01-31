@@ -1,4 +1,8 @@
-use axum::{http::HeaderMap, routing::{get, post}, Json, Router};
+use axum::{
+    http::HeaderMap,
+    routing::{get, post},
+    Json, Router,
+};
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use op::ternary;
@@ -49,7 +53,7 @@ pub fn account_router() -> Router {
 
 async fn get_role() -> ResponseResult {
     let mut conn = get_conn()?;
-    let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String|s)?;
+    let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String| s)?;
     Ok(Response::ok(json!(roles)))
 }
 
@@ -118,18 +122,19 @@ async fn query_user_data(headers: HeaderMap, Json(value): Json<Value>) -> Respon
     let u = get_user(&id, &mut conn)?;
     let perm = verify_permissions(&u.role, "other", OtherGroup::COMPANY_STAFF_DATA, None).await;
     let d = ternary!(data.department.is_empty() =>
-        ternary!(perm => "?"; &u.department);
-        ternary!(perm => &data.department; return Err(Response::permission_denied()))
+        ternary!(perm => "?"; return Err(Response::permission_denied()));
+        ternary!(perm || data.department == u.department => &data.department; return Err(Response::permission_denied()))
     );
 
     if !data.whole {
         let count = conn.query_map(
             format!(
-                "SELECT id FROM user WHERE department = '{}'",
-                ternary!(d.eq("?") => &u.department; d)
+                "SELECT id FROM user {}",
+                ternary!(d.eq("?") => "".into(); format!("WHERE department = '{d}'"))
             ),
             |s: String| s,
         )?;
+
         Ok(Response::ok(json!({"count": count.len()})))
     } else {
         let mut infos = Vec::new();
@@ -147,7 +152,7 @@ async fn query_user_data(headers: HeaderMap, Json(value): Json<Value>) -> Respon
 
 fn query_user_data_by(d: &str, id: &str, conn: &mut PooledConn) -> mysql::Result<Value> {
     let data = conn.query_map(
-        format!("SELECT * FROM user WHERE department = '{d}' AND id != '{id}' ORDER BY identity"),
+        format!("SELECT * FROM user WHERE department = '{d}' AND id != '{id}'"),
         |user: User| user,
     )?;
     Ok(json!({

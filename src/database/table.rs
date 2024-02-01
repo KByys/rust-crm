@@ -89,6 +89,7 @@ impl Table {
             signer VARCHAR(15) NOT NULL,
             customer VARCHAR(15),
             address VARCHAR(150),
+            location VARCHAR(25),
             sign_time VARCHAR(25),
             file TEXT,
             content TEXT,

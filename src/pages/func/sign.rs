@@ -1,21 +1,28 @@
-use std::{num::ParseIntError, ops::Range};
-
-use axum::{extract::{Multipart, Path}, http::{HeaderMap, StatusCode}, routing::{get, post}, Json, Router};
-use mysql::{
-    params,
-    prelude::{FromValue, Queryable},
-    PooledConn, Row,
+use axum::{
+    extract::{Multipart, Path},
+    http::{HeaderMap, StatusCode},
+    routing::{get, post},
+    Json, Router,
 };
+use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 // use mysql_common::prelude::FromRow;
 use op::ternary;
 use rand::random;
 use regex::Regex;
-use serde::{de::Error, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::json;
 
 use crate::{
-    base64_encode, bearer, common::{empty_deserialize_to_none, Person}, database::{c_or_r_more, get_conn}, libs::{gen_id, parse_multipart, time::TIME, FilePart}, pages::account::get_user, parse_jwt_macro, perm::{get_role, verify_permissions}, response::BodyFile, Response, ResponseResult
+    base64_encode, bearer,
+    common::{empty_deserialize_to_none, Person},
+    database::{c_or_r_more, get_conn},
+    libs::{gen_id, parse_multipart, time::TIME, FilePart},
+    pages::account::get_user,
+    parse_jwt_macro,
+    perm::verify_permissions,
+    response::BodyFile,
+    Response, ResponseResult,
 };
 
 #[derive(Deserialize, Serialize, Default, FromRow)]
@@ -27,39 +34,18 @@ pub struct SignRecord {
     #[serde(deserialize_with = "deserialize_time")]
     sign_time: String,
     address: String,
+    location: String,
     #[serde(deserialize_with = "empty_deserialize_to_none")]
     customer: Option<Person>,
     #[serde(skip_deserializing)]
     file: String,
     content: String,
 }
-// impl FromRow for SignRecord {
-//     fn from_row_opt(row: Row) -> Result<Self, mysql::FromRowError>
-//     where
-//         Self: Sized {
-//             let mut record = SignRecord::default();
-//         let columns = row.columns();
-//         let values = row.unwrap();
-//         for (p, column) in columns.iter().enumerate() {
-//             match column.name_str().as_ref() {
-//                 "id" => record.id = String::from_value_opt(values[p].to_owned()).unwrap(),
-//                 "signer" => record.signer.phone = String::from_value_opt(values[p].to_owned()).unwrap(),
-//                 "name" => record.signer.name = String::from_value_opt(values[p].to_owned()).unwrap(),
-//                 "sign_time" => record.sign_time = String::from_value_opt(values[p].to_owned()).unwrap(),
-//                 "address" => record.address = String::from_value_opt(values[p].clone()).unwrap(),
-//                 "customer" => record.customer = Person::from_value_opt(values[p].clone()).unwrap()),
-//                 "file" => record.file = FromValue::from_value_opt(values[p].clone()).unwrap(),
-//                 _ => unreachable!()
-//             }
-//         }
-//         Ok(record)
-//     }
-// }
-
 pub fn sign_router() -> Router {
-    Router::new().route("/sign/in", post(sign))
-    .route("/sign/records", post(query_sign_records))
-    .route("/sign/img/:img", get(get_file))
+    Router::new()
+        .route("/sign/in", post(sign))
+        .route("/sign/records", post(query_sign_records))
+        .route("/sign/img/:img", get(get_file))
 }
 pub fn deserialize_time<'de, D>(de: D) -> Result<String, D::Error>
 where
@@ -109,6 +95,7 @@ fn _insert(
             "signer" => &data.signer.phone(),
             "customer" => data.customer.as_ref().map_or("NULL", |c|c.phone()),
             "address" => &data.address,
+            "location" => &data.location,
             "sign_time" => &data.sign_time,
             "file" => op::ternary!(files.is_empty() => "NULL"; &data.file),
             "content" => &data.content,
@@ -142,17 +129,16 @@ where
     ))
 }
 
-async fn check(role: &str, data: Option<&[&str]>) -> Result<(), Response> {
-    let f = verify_permissions(role, "other", "query_sign_in", data).await;
-    ternary!(f => Ok(()); Err(Response::permission_denied()))
-}
+// async fn check(role: &str, data: Option<&[&str]>) -> Result<(), Response> {
+//     let f = verify_permissions(role, "other", "query_sign_in", data).await;
+//     ternary!(f => Ok(()); Err(Response::permission_denied()))
+// }
 macro_rules! check_perm {
     ($role:expr, $data:expr) => { {
         let f = verify_permissions($role, "other", "query_sign_in", $data).await;
         ternary!(f => (); return Err(Response::permission_denied()))
 
     }
-
     };
 }
 
@@ -169,7 +155,7 @@ async fn query_sign_records(
         // 个人签到记录
         0 => {
             if user.id == data.data {
-                __query(&mut conn, Some(&id), &[user.department])?
+                __query(&mut conn, Some(&id), &[user.department], &data.date_range)?
             } else if !data.data.is_empty() {
                 let signer = get_user(&data.data, &mut conn)?;
                 if user.department == signer.department {
@@ -177,7 +163,12 @@ async fn query_sign_records(
                 } else {
                     check_perm!(&user.role, Some(&[&"all"]))
                 }
-                __query(&mut conn, Some(&data.data), &[signer.department])?
+                __query(
+                    &mut conn,
+                    Some(&data.data),
+                    &[signer.department],
+                    &data.date_range,
+                )?
             } else {
                 return Err(Response::invalid_value("data为空字符串"));
             }
@@ -189,7 +180,7 @@ async fn query_sign_records(
             } else {
                 check_perm!(&user.role, Some(&[&"all"]))
             }
-            __query(&mut conn, None, &[user.department])?
+            __query(&mut conn, None, &[user.department], &data.date_range)?
         }
         // 全公司签到记录
         2 => {
@@ -198,7 +189,7 @@ async fn query_sign_records(
                 "SELECT * FROM department WHERE value != '总经办'",
                 |f: String| f,
             )?;
-            __query(&mut conn, None, &departs)?
+            __query(&mut conn, None, &departs, &data.date_range)?
         }
         _ => return Err(Response::invalid_value("scope数值不对")),
     };
@@ -236,11 +227,16 @@ fn __query(
     conn: &mut PooledConn,
     signer: Option<&str>,
     depart: &[String],
+    (start, end): &(String, String),
 ) -> Result<Vec<(String, Vec<SignRecord>)>, Response> {
     let mut records = Vec::new();
     if let Some(signer) = signer {
         let record = conn.query_map(
-            format!("SELECT *  FROM sign WHERE signer = '{signer}' ORDER BY sign_time"),
+            format!(
+                "SELECT *  FROM sign WHERE signer = '{signer}' 
+                AND (sign_time >= '{}' AND sign_time <= '{}') ORDER BY sign_time",
+                start, end
+            ),
             |r| r,
         )?;
         records.push((depart[0].to_string(), record))
@@ -249,7 +245,7 @@ fn __query(
             let record = conn.query_map(
                 format!(
                     "SELECT DISTINCT s.* FROM sign s JOIN user u ON u.id = s.signer 
-                        WHERE u.department = '{d}' ORDER BY sign_time"
+                        WHERE u.department = '{d}'AND (s.sign_time >= '{start}' AND s.sign_time <= '{end}') ORDER BY sign_time"
                 ),
                 |f| f,
             )?;

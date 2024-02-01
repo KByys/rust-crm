@@ -1,16 +1,25 @@
 
 use crm_rust::pages::CUSTOM_FIELD_INFOS;
-use mysql::{prelude::Queryable, Pool};
+use mysql::{params, prelude::Queryable, Pool};
 use op::ternary;
 fn main() -> mysql::Result<()> {
-    let pool = Pool::new("mysql://root:313aaa@localhost:3306/crm")?;
+    let pool = Pool::new("mysql://new_user:password@localhost:3306/crm")?;
     let mut conn = pool.get_conn()?;
-    for table in CUSTOM_FIELD_INFOS {
-        for t in table {
-            conn.query_drop(format!("ALTER table {t} modify column id VARCHAR(150) NOT NULL"))?;
-            
-        }
-    }
+    let ter = conn.query_first::<String, &str>("SELECT role FROM user");
+    println!("{:?}", ter);
+    //  conn.exec_drop(
+    //     "INSERT INTO user (id, password, name,  sex, role, department) VALUES (
+    //     :id, :password, :name, :sex, :role, :department
+    // )",
+    //     params! {
+    //         "id" => "223456",
+    //         "password" => md5::compute("12345678").0,
+    //         "name" => "345643",
+    //         "sex" => 0,
+    //         "role" => "root",
+    //         "department" => "总经办",
+    //     },
+    // )?;
     Ok(())
 }
 /// ret => return

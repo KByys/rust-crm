@@ -16,7 +16,8 @@ struct LoginID {
 
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    println!("{}", value);
+    println!("{:?}", value);
+
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
         let token = match parse_jwt(&bearer) {
             Some(token) if !token.sub => {

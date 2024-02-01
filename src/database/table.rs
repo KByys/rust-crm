@@ -63,6 +63,7 @@ impl Table {
         )
     ";
     /// 客户登录信息
+    /// TODO
     pub const CUSTOMER_LOGIN_TABLE: &str = "CREATE TABLE IF NOT EXISTS customer_login(
             id VARCHAR(15) NOT NULL,
             password BINARY(16) NOT NULL,

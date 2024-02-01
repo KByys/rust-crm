@@ -117,8 +117,7 @@ async fn add_product(headers: HeaderMap, part: Multipart) -> ResponseResult {
     product.base_infos.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     product.base_infos.cover =  data.files.first().map(|file| {
         let filename = file.filename.as_deref().unwrap_or("unknown.jpg");
-        let base64_path = base64_encode(filename);
-        base64_path
+        gen_file_link(&time, filename)
     });
     conn.query_drop("BEGIN")?;
     c_or_r_more(_insert, &mut conn, &product, data.files.first())?;

@@ -76,6 +76,19 @@ where
     }
 }
 
+async fn sign_only_json(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let time = TIME::now()?;
+    let mut sign: SignRecord = serde_json::from_value(value)?;
+    sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
+    sign.signer.phone = id;
+    conn.query_drop("BEGIN")?;
+    c_or_r_more(_insert, &mut conn, &sign, &[])?;
+    Ok(Response::empty())
+}
+
 async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
@@ -94,7 +107,7 @@ async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     sign.file.pop();
     conn.query_drop("BEGIN")?;
     c_or_r_more(_insert, &mut conn, &sign, &files)?;
-    todo!()
+    Ok(Response::empty())
 }
 fn _insert(
     conn: &mut PooledConn,
@@ -102,7 +115,7 @@ fn _insert(
     files: &[(&FilePart, String)],
 ) -> Result<(), Response> {
     conn.exec_drop(
-        "INSERT INTO sgin (id, signer, customer, address, sign_time, file, content)
+        "INSERT INTO sign (id, signer, customer, address, sign_time, file, content)
         VALUES (:id, :signer, :customer, :address, :sign_time, :file, :content)",
         params! {
             "id" => &data.id,
@@ -115,7 +128,7 @@ fn _insert(
         },
     )?;
     for (f, path) in files {
-        std::fs::write(format!("resourses/sign/{path}"), &f.bytes)?;
+        std::fs::write(format!("resources/sign/{path}"), &f.bytes)?;
     }
     Ok(())
 }

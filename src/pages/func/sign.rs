@@ -58,6 +58,7 @@ pub struct SignRecord {
 
 pub fn sign_router() -> Router {
     Router::new().route("/sign/in", post(sign))
+    .route("/sign/in/json", post(sign_only_json))
     .route("/sign/records", post(query_sign_records))
     .route("/sign/img/:img", get(get_file))
 }

@@ -1,17 +1,12 @@
 use std::collections::HashMap;
-
 lazy_static::lazy_static! {
     pub static ref PERMISSION_GROUPS: HashMap<&'static str, Vec<&'static str>> = {
-        let mut map = HashMap::new();
-        for (k, v) in groups() {
-            map.insert(k, v);
-        }
-        map
+        groups()
     };
 }
 
-fn groups() -> Vec<(&'static str, Vec<&'static str>)> {
-    vec![
+fn groups() -> HashMap<&'static str, Vec<&'static str>> {
+    [
         ("role", ROLE.to_vec()),
         ("account", ACCOUNT.to_vec()),
         ("customer", CUSTOMER.to_vec()),
@@ -23,10 +18,17 @@ fn groups() -> Vec<(&'static str, Vec<&'static str>)> {
         ("form", FORM.to_vec()),
         ("other", OTHER_GROUP.to_vec()),
     ]
+    .into_iter()
+    .collect()
 }
 
 #[forbid(unused)]
-pub static ROLE: [&str; 4] = ["create", "update", "delete", "change_role"];
+pub static ROLE: [&str; 4] = [
+    RoleGroup::CREATE,
+    RoleGroup::UPDATE,
+    RoleGroup::DELETE,
+    RoleGroup::CHANGE_ROLE,
+];
 
 pub struct RoleGroup;
 
@@ -48,7 +50,12 @@ impl AccountGroup {
 }
 
 #[forbid(unused)]
-pub static DEPARTMENT: [&str; 4] = ["create", "update", "delete", "delete_role"];
+pub static DEPARTMENT: [&str; 4] = [
+    DepartmentGroup::CREATE,
+    DepartmentGroup::UPDATE,
+    DepartmentGroup::DELETE,
+    DepartmentGroup::DELETE_ROLE,
+];
 
 pub struct DepartmentGroup;
 
@@ -62,14 +69,14 @@ impl DepartmentGroup {
 #[forbid(unused)]
 pub static CUSTOMER: [&str; 9] = [
     CustomerGroup::ACTIVATION,
-    "query",
-    "enter_cutomer_data",
-    "update_cutomer_data",
+    CustomerGroup::QUERY,
+    CustomerGroup::ENTER_CUSTOMER_DATA,
+    CustomerGroup::UPDATE_CUSTOMER_DATA,
     CustomerGroup::DELETE_CUSTOMER_DATA,
-    "query_pub_sea",
-    "transfer_customer",
-    "export_data",
-    "releases_customer",
+    CustomerGroup::QUERY_PUB_SEA,
+    CustomerGroup::TRANSFER_CUSTOMER,
+    CustomerGroup::EXPORT_DATA,
+    CustomerGroup::RELEASE_CUSTOMER,
 ];
 
 pub struct CustomerGroup;
@@ -77,7 +84,7 @@ impl CustomerGroup {
     pub const ACTIVATION: &str = "activation";
     pub const QUERY: &str = "query";
     pub const ENTER_CUSTOMER_DATA: &str = "enter_cutomer_data";
-    pub const UPDATE: &str = "update_customer_data";
+    pub const UPDATE_CUSTOMER_DATA: &str = "update_customer_data";
     pub const DELETE_CUSTOMER_DATA: &str = "delete_customer_data";
     /// 查看不属于任何部门的公海客户信息
     pub const QUERY_PUB_SEA: &str = "query_pub_sea";
@@ -86,7 +93,11 @@ impl CustomerGroup {
     pub const RELEASE_CUSTOMER: &str = "release_customer";
 }
 #[forbid(unused)]
-pub static STOREHOUSE: [&str; 3] = ["activation", "query_product", "prodcut"];
+pub static STOREHOUSE: [&str; 3] = [
+    StorehouseGroup::ACTIVATION,
+    StorehouseGroup::QUERY_PRODUCT,
+    StorehouseGroup::PRODUCT,
+];
 
 pub struct StorehouseGroup;
 
@@ -98,7 +109,10 @@ impl StorehouseGroup {
 }
 
 #[forbid(unused)]
-pub static PURCHASE: [&str; 2] = ["activation", "query"];
+pub static PURCHASE: [&str; 2] = [
+    PurchaseGroup::ACTIVATION,
+    PurchaseGroup::QUERY
+];
 pub struct PurchaseGroup;
 
 impl PurchaseGroup {
@@ -107,7 +121,10 @@ impl PurchaseGroup {
 }
 
 #[forbid(unused)]
-pub static FINANCE: [&str; 2] = ["activation", "query"];
+pub static FINANCE: [&str; 2] = [
+    FinanceGroup::ACTIVATION,
+    FinanceGroup::QUERY
+];
 pub struct FinanceGroup;
 
 impl FinanceGroup {
@@ -124,7 +141,7 @@ impl ApprovalGroup {
 }
 
 #[forbid(unused)]
-pub static FORM: [&str; 1] = ["query"];
+pub static FORM: [&str; 1] = [FormGroup::QUERT];
 pub struct FormGroup;
 
 impl FormGroup {

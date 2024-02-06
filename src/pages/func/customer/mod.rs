@@ -94,11 +94,14 @@ impl CCInfos {
         }
     }
     pub fn generate_sql(&self, index: usize, id: &str) -> String {
+        use std::fmt::Write as _;
         let mut sql: String = self
             .get(index)
             .iter()
-            .map(|s| format!("('{}', '{}', '{}'),", id, s.display, s.value))
-            .collect();
+            .fold(String::new(), |mut output, s| {
+                let _ = write!(output, "('{}', '{}', '{}'),", id, s.display, s.value);
+                output
+            });
         sql.pop();
         sql
     }

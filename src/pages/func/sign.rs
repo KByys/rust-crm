@@ -44,6 +44,7 @@ pub struct SignRecord {
 pub fn sign_router() -> Router {
     Router::new()
         .route("/sign/in", post(sign))
+        .route("/sign/in/json", post(sign_only_json))
         .route("/sign/records", post(query_sign_records))
         .route("/sign/img/:img", get(get_file))
 }
@@ -60,6 +61,18 @@ where
             "Invalid Time Format. 时间格式应当为'YYYY-MM-DD HH:MM'",
         ))
     }
+}
+async fn sign_only_json(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let time = TIME::now()?;
+    let mut sign: SignRecord = serde_json::from_value(value)?;
+    sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
+    sign.signer.phone = id;
+    conn.query_drop("BEGIN")?;
+    c_or_r_more(_insert, &mut conn, &sign, &[])?;
+    Ok(Response::empty())
 }
 
 async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {

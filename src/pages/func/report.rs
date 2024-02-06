@@ -1,21 +1,22 @@
 use std::cmp::Ordering;
 
 use crate::{
-    bearer, common::{empty_deserialize_to_none, Person}, database::get_conn, do_if, libs::{
+    bearer,
+    common::{empty_deserialize_to_none, Person},
+    database::get_conn,
+    do_if,
+    libs::{
         gen_id,
         time::{TimeFormat, TIME},
-    }, parse_jwt_macro, Response, ResponseResult
+    },
+    parse_jwt_macro, Response, ResponseResult,
 };
 use axum::{
     http::HeaderMap,
     routing::{delete, get, post},
     Json, Router,
 };
-use mysql::{
-    params,
-    prelude::Queryable,
-    PooledConn,
-};
+use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde_json::json;
 
@@ -86,7 +87,7 @@ struct ReportReply {
 //     let value: Option<String> = Deserialize::deserialize(de)?;
 //     Ok(value.and_then(|v| do_if!(v.is_empty() => None, Some(User::from(v)))))
 // }
-#[derive(Debug, serde::Deserialize, serde::Serialize, FromRow)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
 pub struct Report {
     #[serde(default)]
     id: String,
@@ -110,6 +111,25 @@ pub struct Report {
     #[serde(default)]
     opinion: Option<String>,
 }
+impl FromRow for Report {
+    fn from_row_opt(row: mysql_common::Row) -> Result<Self, mysql_common::FromRowError>
+    where
+        Self: Sized,
+    {
+        let mut report = Report::default();
+        let columns = row.columns();
+        for (i, v) in row.unwrap().into_iter().enumerate() {
+            match columns[i].name_str().as_ref() {
+                "dsf" => {
+
+                }
+                _ => panic!("不允许出现")
+            }
+        }
+        Ok(report)
+    }
+}
+
 impl Report {
     fn ac(&self) -> Option<&Person> {
         match &self.ac {
@@ -184,7 +204,9 @@ async fn process_report(
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Message = serde_json::from_value(value)?;
     let status = do_if!(data.ok => 2, 3);
-    let Some::<Report>(r) = conn.query_first(format!("SELECT * FROM report WHERE id = '{}'", data.id))? else {
+    let Some::<Report>(r) =
+        conn.query_first(format!("SELECT * FROM report WHERE id = '{}'", data.id))?
+    else {
         return Err(Response::not_exist("该报告不存在"));
     };
     if r.reviewer.phone != id {
@@ -205,9 +227,12 @@ async fn update_report(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     if !(0..3).contains(&data.ty) {
         return Err(Response::invalid_value("ty的值不对"));
     }
-    let Some::<usize>(status) = conn.query_first(
-            format!("SELECT status FROM report WHERE id = '{}' AND applicant = '{id}'", data.id))? else {
-                return Err(Response::not_exist("找不到该报告"));
+    let Some::<usize>(status) = conn.query_first(format!(
+        "SELECT status FROM report WHERE id = '{}' AND applicant = '{id}'",
+        data.id
+    ))?
+    else {
+        return Err(Response::not_exist("找不到该报告"));
     };
     if status > 1 {
         return Err(Response::dissatisfy("只能修改未审批的报告"));
@@ -231,17 +256,56 @@ struct ResponseData {
     report: Report,
     replies: Vec<ReportReply>,
 }
+#[derive(serde::Deserialize)]
+struct Message {
+    ty: usize,
+    sort: usize,
+    status: usize,
+    applicant: String,
+    reviewer: String,
+    cc: String,
+    ac: String,
+}
+macro_rules! change {
+    (number $arg:expr, $slice:expr) => {
+        op::ternary!($slice.contains(&$arg) => format!("={}", $arg); "IS NOT NULL".into())
+    };
+    (string $arg:expr, $null:expr, $name:expr) => {
+        {
+            if $arg.is_empty() {
+                op::ternary!($null => "IS NOT NULL OR {} IS NULL"; "IS NOT NULL").into()
+            } else {
+                format!("= '{}'", $arg)
+            }
+        }
+    };
+}
+
+fn query_statement(msg: &Message) -> String {
+    format!(
+        "SELECT r.*, appr.name as appr_name, rev.name as rev_name, 
+        cc.name as cc_name, ac.name as acc_name 
+        FROM report r
+        LEFT JOIN user appr ON appr.id=r.applicant 
+        LEFT JOIN user rev ON rev.id=r.reviewer
+        LEFT JOIN customer ac ON ac.id=r.ac
+        LEFT JOIN user cc ON cc.id=r.cc
+        WHERE (
+            (r.cc IS NULL AND r.ac IS NULL) OR
+            (r.cc IS NOT NULL AND r.ac IS NULL) OR
+            (r.cc IS NOT NULL AND r.ac IS NOT NULL)
+        ) AND (r.ty {}) AND (r.status {}) AND (r.applicant {}) 
+        AND (r.reviewer {}) AND (r.cc {}) AND (r.ac {})",
+        change!(number msg.ty, 0..=2),
+        change!(number msg.status, 0..=3),
+        change!(string msg.applicant, false, ""),
+        change!(string msg.reviewer, false, ""),
+        change!(string msg.cc, true, "r.cc"),
+        change!(string msg.ac, true, "r.ac"),
+    )
+}
+
 async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
-    #[derive(serde::Deserialize)]
-    struct Message {
-        ty: usize,
-        sort: usize,
-        status: usize,
-        applicant: String,
-        reviewer: String,
-        cc: String,
-        ac: String,
-    }
     let mut conn = get_conn()?;
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);

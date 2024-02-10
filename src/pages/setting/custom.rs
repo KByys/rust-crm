@@ -1,14 +1,17 @@
+use std::collections::HashMap;
+
 use axum::{extract::Path, http::HeaderMap, Json};
 use mysql::{prelude::Queryable, PooledConn};
+use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::{c_or_r, catch_some_mysql_error, get_conn, Database},
+    database::{c_or_r, get_conn},
     debug_info,
     libs::time::{TimeFormat, TIME},
     parse_jwt_macro,
-    perm::{action::PERMISSION_GROUPS, verify_permissions, ROLES_GROUP_MAP, get_role},
+    perm::{get_role, verify_permissions},
     Response, ResponseResult,
 };
 
@@ -24,36 +27,36 @@ pub struct CustomInfos {
     new_value: String,
 }
 /// 自定义字段
-pub const CUSTOM_FIELDS: [[&str; 3]; 2] = [
-    [
-        "customize_customer_text",
-        "customize_customer_time",
-        "customize_customer_box",
-    ],
-    [
-        "customize_product_text",
-        "customize_product_time",
-        "customize_product_box",
-    ],
-];
-/// 自定义字段的下拉框选项
-pub const CUSTOM_BOX_FIELDS: [&str; 2] = [
-    "customize_customer_box_option",
-    "customize_product_box_option",
-];
-/// 客户和产品的自定义字段的值
-pub const CUSTOM_FIELD_INFOS: [[&str; 3]; 2] = [
-    [
-        "customize_customer_text_infos",
-        "customize_customer_time_infos",
-        "customize_customer_box_infos",
-    ],
-    [
-        "customize_product_text_infos",
-        "customize_product_time_infos",
-        "customize_product_box_infos",
-    ],
-];
+// pub const CUSTOM_FIELDS: [[&str; 3]; 2] = [
+//     [
+//         "customize_customer_text",
+//         "customize_customer_time",
+//         "customize_customer_box",
+//     ],
+//     [
+//         "customize_product_text",
+//         "customize_product_time",
+//         "customize_product_box",
+//     ],
+// ];
+// /// 自定义字段的下拉框选项
+// pub const CUSTOM_BOX_FIELDS: [&str; 2] = [
+//     "customize_customer_box_option",
+//     "customize_product_box_option",
+// ];
+// /// 客户和产品的自定义字段的值
+// pub const CUSTOM_FIELD_INFOS: [[&str; 3]; 2] = [
+//     [
+//         "customize_customer_text_infos",
+//         "customize_customer_time_infos",
+//         "customize_customer_box_infos",
+//     ],
+//     [
+//         "customize_product_text_infos",
+//         "customize_product_time_infos",
+//         "customize_product_box_infos",
+//     ],
+// ];
 
 async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String, Response> {
     let bearer = bearer!(&headers);
@@ -66,26 +69,137 @@ async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String
         Err(Response::permission_denied())
     }
 }
-#[derive(Clone, Copy)]
-#[repr(usize)]
-enum CustomizeFieldType {
-    Text,
-    Time,
-    Box,
+// #[derive(Clone, Copy)]
+// #[repr(usize)]
+// enum CustomizeFieldType {
+//     Text,
+//     Time,
+//     Box,
+// }
+// impl CustomizeFieldType {
+//     pub fn new(s: &str) -> Result<Self, Response> {
+//         match s {
+//             "0" => Ok(Self::Text),
+//             "1" => Ok(Self::Time),
+//             "2" => Ok(Self::Box),
+//             _ => Err(Response::invalid_value(format!(
+//                 "display的值 `{}`，非法",
+//                 s
+//             ))),
+//         }
+//     }
+// }
+
+#[derive(FromRow, serde::Serialize, Clone)]
+pub struct Field {
+    ty: usize,
+    display: String,
+    value: String,
+    #[serde(skip_serializing)]
+    #[allow(unused)]
+    create_time: String,
 }
-impl CustomizeFieldType {
-    pub fn new(s: &str) -> Result<Self, Response> {
-        match s {
-            "0" => Ok(Self::Text),
-            "1" => Ok(Self::Time),
-            "2" => Ok(Self::Box),
-            _ => Err(Response::invalid_value(format!(
-                "display的值 `{}`，非法",
-                s
-            ))),
-        }
+impl Field {
+    pub fn is_eq(&self, ty: usize, display: &str, value: &str) -> bool {
+        self.ty == ty && self.display == display && self.value == value
     }
 }
+
+pub static mut STATIC_CUSTOM_FIELDS: CustomFields = CustomFields::new();
+pub static mut STATIC_CUSTOM_BOX_OPTIONS: CustomFields = CustomFields::new();
+pub struct CustomFields {
+    fields: Vec<Field>,
+}
+impl CustomFields {
+    pub const fn new() -> Self {
+        CustomFields { fields: vec![] }
+    }
+    pub fn init(&mut self, conn: &mut PooledConn, table: &str) -> mysql::Result<()> {
+        self.fields = conn.query_map(format!("SELECT * FROM {table}"), |f| f)?;
+        Ok(())
+    }
+    pub fn contains(&self, ty: usize, display: &str, value: &str) -> bool {
+        self.fields
+            .iter()
+            .any(|f| f.ty == ty && f.display == display && f.value == value)
+    }
+    pub fn push(&mut self, ty: usize, display: String, value: String, create_time: String) {
+        if !self.contains(ty, &display, &value) {
+            self.fields.push(Field {
+                ty,
+                display,
+                value,
+                create_time,
+            });
+        }
+    }
+    pub fn remove(&mut self, ty: usize, display: &str, value: &str) {
+        let mut index = 0;
+        while index < self.fields.len() {
+            let data = &self.fields[index];
+            if data.ty == ty && data.display == display && data.value == value {
+                self.fields.remove(index);
+                break;
+            } else {
+                index += 1;
+            }
+        }
+    }
+    pub fn remove_display(&mut self, ty: usize, display: &str) {
+         let mut buf = Vec::new();
+         for item in &self.fields {
+             if item.ty != ty || item.display != display {
+                buf.push(item.clone())
+                 
+             }
+         }
+         self.fields = buf;
+    }
+    pub fn update(&mut self, ty: usize, display: &str, old_value: &str, new_value: String) {
+        for item in &mut self.fields {
+            if item.is_eq(ty, display, old_value) {
+                item.value = new_value;
+                break;
+            }
+        }
+    }
+    pub fn update_display(&mut self, ty: usize, old_display: &str, new_display: String) {
+        for item in &mut self.fields {
+            if item.ty == ty && item.display == old_display {
+                item.display = new_display;
+                break;
+            }
+        }
+    }
+    pub fn get_fields(&self, ty: usize) -> (Vec<&str>, Vec<&str>, Vec<&str>) {
+        let mut texts = Vec::new();
+        let mut times = Vec::new();
+        let mut boxes = Vec::new();
+        for item in &self.fields {
+            if item.ty == ty {
+                match item.display.as_str() {
+                    "0" => texts.push(item.value.as_str()),
+                    "1" => times.push(item.value.as_str()),
+                    "2" => boxes.push(item.value.as_str()),
+                    _ => (),
+                }
+            }
+        }
+        (texts, times, boxes)
+    }
+    pub fn get_boxes(&self, ty: usize) -> HashMap<&str, Vec<&str>> {
+        let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
+        for item in &self.fields {
+            if item.ty == ty {
+                map.entry(item.display.as_str())
+                    .or_default()
+                    .push(item.value.as_str());
+            }
+        }
+        map
+    }
+}
+
 pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = verify_perm(headers, &mut conn).await?;
@@ -97,47 +211,50 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         // 字段为空字符串则忽略
         return Err(Response::empty());
     }
-    CustomizeFieldType::new(&data.display)?;
+    // CustomizeFieldType::new(&data.display)?;
+    if !matches!(data.display.as_str(), "0" | "1" | "2") {
+        return Err(Response::invalid_value("display 非法"));
+    }
     conn.query_drop("BEGIN")?;
     c_or_r(_insert_field, &mut conn, &data, false)?;
     Ok(Response::empty())
 }
 fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
-    let field = CustomizeFieldType::new(&param.display).unwrap();
-    let create_time = TIME::now().unwrap().format(TimeFormat::YYYYMMDD_HHMMSS);
-    let table = CUSTOM_FIELDS[param.ty][field as usize];
-    let is_exist = conn
-        .query_first::<String, String>(format!(
-            "SELECT value FROM {} WHERE value = '{}'",
-            table, param.value
-        ))?
-        .is_some();
-    if is_exist {
-        return Ok(());
+    let create_time = TIME::now()?.format(TimeFormat::YYYYMMDD_HHMMSS);
+    unsafe {
+        if STATIC_CUSTOM_FIELDS.contains(param.ty, &param.display, &param.value) {
+            return Ok(());
+        }
     }
     conn.query_drop(format!(
-        "INSERT INTO {} ( value, create_time) VALUES ('{}', '{}')",
-        table, param.value, create_time
+        "INSERT INTO custom_fields (ty, display, value, create_time) VALUES ({}, '{}', '{}', '{}')",
+        param.ty, param.display, param.value, create_time
     ))?;
     let id: Vec<String> = if param.ty == 0 {
         conn.query_map("SELECT id FROM customer", |s| s)?
     } else {
         conn.query_map("SELECT id FROM product", |s| s)?
     };
-
     if !id.is_empty() {
-        let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
-        let mut values: String = Iterator::map(id.iter(), |id| {
-            format!("('{}' ,'{}', ''),", param.value, id)
-        })
-        .collect();
+        let mut values: String = id.iter().fold(String::new(), |output, id| {
+            format!(
+                "{output} ({}, {},'{}' ,'{}', ''),",
+                param.ty, param.display, param.value, id
+            )
+        });
         values.pop();
-        let query = format!("INSERT INTO {table} (display, id, value) VALUES {}", values);
-        println!("{}", query);
         conn.query_drop(format!(
-            "INSERT INTO {table} (display, id, value) VALUES {}",
+            "INSERT INTO custom_field_data (fields, ty, display, id, value) VALUES {}",
             values
         ))?;
+    }
+    unsafe {
+        STATIC_CUSTOM_FIELDS.push(
+            param.ty,
+            param.display.clone(),
+            param.value.clone(),
+            create_time,
+        )
     }
     Ok(())
 }
@@ -157,68 +274,66 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         return Err(Response::empty());
     }
     let create_time = TIME::now()?.format(TimeFormat::YYYYMMDD_HHMMSS);
+    unsafe {
+        if !STATIC_CUSTOM_FIELDS.contains(data.ty, "2", &data.display) {
+            return Err(Response::not_exist("该自定义下拉字段不存在"));
+        }
+        if STATIC_CUSTOM_BOX_OPTIONS.contains(data.ty, &data.display, &data.value) {
+            return Ok(Response::empty());
+        }
 
-    let table = CUSTOM_BOX_FIELDS[data.ty];
-    conn.query_drop(format!(
-        "INSERT INTO {table} (display, value, create_time) VALUES ('{}', '{}', '{create_time}')",
-        data.display, data.value
-    ))
-    .map_err(|err| {
-        catch_some_mysql_error(
-            Database::FOREIGN_KEY_ERROR_CODE,
-            format!("没有 ‘{}’这个自定义下拉字段", data.display),
-            err,
-        )
-    })?;
+        conn.query_drop(format!(
+        "INSERT INTO custom_field_option (ty, display, value, create_time) VALUES ({}, '{}', '{}', '{create_time}')",
+        data.ty, data.display, data.value
+    ))?;
+        STATIC_CUSTOM_BOX_OPTIONS.push(data.ty, data.display, data.value, create_time);
+    }
     Ok(Response::empty())
 }
 
 pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "修改自定义下拉字段，操作者：{}，数据：{:?}",
-        id, value
-    ));
+    debug_info(format!("修改自定义字段，操作者：{}，数据：{:#?}", id, value));
     let data: CustomInfos = serde_json::from_value(value)?;
-    println!("{:#?}", data);
-    CustomizeFieldType::new(&data.display)?;
+    if !matches!(data.display.as_str(), "0" | "1" | "2") {
+        return Err(Response::invalid_value(format!(
+            "display的值 `{}`，非法",
+            data.display
+        )));
+    }
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
     } else if data.new_value.is_empty() || data.old_value.is_empty() {
         return Err(Response::invalid_value("new_value 或 old_value 不能为空"));
     }
     conn.query_drop("BEGIN")?;
-    conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    c_or_r(_update_custom_field, &mut conn, &data, true)?;
+    c_or_r(_update_custom_field, &mut conn, &data, false)?;
     Ok(Response::empty())
 }
 
 fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
-    let field = CustomizeFieldType::new(&param.display).unwrap();
     // 更新字段
-    let table = CUSTOM_FIELDS[param.ty][field as usize];
     conn.query_drop(format!(
-        "UPDATE {table} SET value = '{}' WHERE value = '{}'",
-        param.new_value, param.old_value
+        "UPDATE custom_fields SET value = '{}' WHERE value = '{}' AND ty = {} AND display = '{}'",
+        param.new_value, param.old_value, param.ty, param.display
     ))?;
-    println!(
-        "UPDATE {table} SET value = '{}' WHERE value = '{}'",
-        param.new_value, param.old_value
-    );
-    // 更新客户或产品对应的字段值
-    let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
     conn.query_drop(format!(
-        "UPDATE {table} SET display = '{}' WHERE display = '{}'",
-        param.new_value, param.old_value
+        "UPDATE custom_field_data SET display = '{}' WHERE display = '{}' AND fields = {} AND ty = {}",
+        param.new_value, param.old_value, param.ty, param.display 
     ))?;
-    if let CustomizeFieldType::Box = field {
-        // 更新下拉字段选项对应的字段
-        let table = CUSTOM_BOX_FIELDS[param.ty];
+    if param.display.eq("2") {
         conn.query_drop(format!(
-            "UPDATE {table} SET display = '{}' WHERE display = '{}'",
-            param.new_value, param.old_value
+            "UPDATE custom_field_option SET display = '{}' WHERE display = '{}' AND ty = {}",
+            param.new_value, param.old_value, param.ty
         ))?;
+        unsafe {
+            STATIC_CUSTOM_BOX_OPTIONS.update_display(param.ty, &param.old_value, param .new_value.to_owned())
+        }
+    }
+    
+    unsafe {
+        STATIC_CUSTOM_FIELDS.update(param.ty, &param.display, &param.old_value, param.new_value.to_owned())
     }
     Ok(())
 }
@@ -230,15 +345,20 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         "修改自定义下拉字段的选项，操作者：{}，数据：{:?}",
         id, value
     ));
+
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.new_value.is_empty() {
         return Ok(Response::empty());
     }
-    let table = CUSTOM_BOX_FIELDS[data.ty];
+    
+    // let table = CUSTOM_BOX_FIELDS[data.ty];
     conn.query_drop(format!(
-        "UPDATE {} SET value = '{}' WHERE value = '{}' AND display = '{}'",
-        table, data.new_value, data.old_value, data.display
+        "UPDATE custom_field_option SET value = '{}' WHERE value = '{}' AND display = '{}' AND ty = {}",
+        data.new_value, data.old_value, data.display, data.ty
     ))?;
+    unsafe {
+        STATIC_CUSTOM_BOX_OPTIONS.update(data.ty, &data.display, &data.old_value, data.new_value);
+    }
     Ok(Response::empty())
 }
 
@@ -250,37 +370,40 @@ pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         id, value
     ));
     let data: CustomInfos = serde_json::from_value(value)?;
-    CustomizeFieldType::new(&data.display)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
     }
     conn.query_drop("BEGIN")?;
-    conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    c_or_r(_delete_custom_field, &mut conn, &data, true)?;
+    c_or_r(_delete_custom_field, &mut conn, &data, false)?;
     Ok(Response::empty())
 }
 
 fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
-    let field = CustomizeFieldType::new(&param.display).unwrap();
+    if !matches!(param.display.as_str(), "0" | "1" | "2") {
+        return Err(Response::invalid_value("display非法"));
+    }
     // 删除字段
-    let table = CUSTOM_FIELDS[param.ty][field as usize];
     conn.query_drop(format!(
-        "DELETE FROM {table} WHERE value = '{}'",
-        param.value
+        "DELETE FROM custom_fields WHERE value = '{}' AND ty = {} AND display = '{}'",
+        param.value, param.ty, param.display
     ))?;
     // 删除客户或产品对应的字段值
-    let table = CUSTOM_FIELD_INFOS[param.ty][field as usize];
     conn.query_drop(format!(
-        "DELETE FROM {table} WHERE display = '{}'",
-        param.value
+        "DELETE FROM custom_field_data WHERE display = '{}' AND ty = {} AND fields={}",
+        param.value, param.display, param.ty
     ))?;
-    if let CustomizeFieldType::Box = field {
-        // 删除下拉字段选项对应的字段
-        let table = CUSTOM_BOX_FIELDS[param.ty];
+    // 删除下拉字段选项对应的字段
+    if param.display.eq("2") {
         conn.query_drop(format!(
-            "DELETE FROM {table} WHERE display = '{}'",
-            param.value
+            "DELETE FROM custom_field_option WHERE display = '{}' AND ty = {}",
+            param.display, param.ty
         ))?;
+        unsafe {
+            STATIC_CUSTOM_BOX_OPTIONS.remove_display(param.ty, &param.value);
+        }
+    }
+    unsafe {
+        STATIC_CUSTOM_FIELDS.remove(param.ty, &param.display, &param.value);
     }
     Ok(())
 }
@@ -293,84 +416,46 @@ pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         id, value
     ));
     let data: CustomInfos = serde_json::from_value(value)?;
-    let table = CUSTOM_BOX_FIELDS[data.ty];
+    // let table = CUSTOM_BOX_FIELDS[data.ty];
     conn.query_drop(format!(
-        "DELETE FROM {} WHERE value = '{}' AND display = '{}'",
-        table, data.value, data.display
+        "DELETE FROM custom_field_option WHERE value = '{}' AND display = '{}' AND ty = {}",
+        data.value, data.display,  data.ty
     ))?;
+    unsafe {
+        STATIC_CUSTOM_BOX_OPTIONS.remove(data.ty, &data.display, &data.value);
+    }
     Ok(Response::empty())
 }
 
-pub async fn get_custom_info_with(Path(ty): Path<usize>) -> ResponseResult {
-    let mut conn = get_conn()?;
-    let query_values = |table, conn: &mut PooledConn| {
-        conn.query_map(
-            format!("SELECT value FROM {table} ORDER BY create_time"),
-            |value: String| value,
-        )
-    };
-    op::ternary!(ty >= 2 => return Err(Response::invalid_value("ty 错误")); ());
-    let text_infos = query_values(CUSTOM_FIELDS[ty][0], &mut conn)?;
-    let time_infos = query_values(CUSTOM_FIELDS[ty][1], &mut conn)?;
-    let _box_infos: Vec<_> = query_values(CUSTOM_FIELDS[ty][2], &mut conn)?;
-    let mut box_infos = Vec::new();
-    let table = CUSTOM_BOX_FIELDS[ty];
-    for text in _box_infos {
-        let t = conn.query_map(
-            format!(
-                "SELECT value FROM {table} WHERE display = '{}' ORDER BY create_time",
-                text
-            ),
-            |text: String| text,
-        )?;
-        box_infos.push(json!({
-            "display": text,
-            "values": t
-        }));
+fn _get_custom_infos(ty: usize) -> Value {
+    unsafe {
+        let (texts, times, boxes) = STATIC_CUSTOM_FIELDS.get_fields(ty);
+        let options = STATIC_CUSTOM_BOX_OPTIONS.get_boxes(ty);
+        let boxes: Vec<_> = boxes
+            .iter()
+            .map(|v| {
+                json!({
+                    "display": v,
+                    "values": options.get(v).unwrap_or(&vec![])
+                })
+            })
+            .collect();
+        json!({
+            "ty": ty,
+            "text_infos": texts,
+            "time_infos": times,
+            "box_infos": boxes
+        })
     }
-    let value = json!({
-        "ty": ty,
-        "text_infos": text_infos,
-        "time_infos": time_infos,
-        "box_infos": box_infos
-    });
-    Ok(Response::ok(value))
+}
+pub async fn get_custom_info_with(Path(ty): Path<usize>) -> ResponseResult {
+    op::ternary!(ty >= 2 => return Err(Response::invalid_value("ty 错误")); ());
+    Ok(Response::ok(_get_custom_infos(ty)))
 }
 
 pub async fn get_custom_info() -> ResponseResult {
-    let mut conn = get_conn()?;
-    let mut data = Vec::new();
-    for ty in 0..=1 {
-        let query_values = |table, conn: &mut PooledConn| {
-            conn.query_map(
-                format!("SELECT value FROM {table} ORDER BY create_time"),
-                |value: String| value,
-            )
-        };
-        let text_infos = query_values(CUSTOM_FIELDS[ty][0], &mut conn)?;
-        let time_infos = query_values(CUSTOM_FIELDS[ty][1], &mut conn)?;
-        let _box_infos: Vec<_> = query_values(CUSTOM_FIELDS[ty][2], &mut conn)?;
-        let mut box_infos = Vec::new();
-        let table = CUSTOM_BOX_FIELDS[ty];
-        for text in _box_infos {
-            let t = conn.query_map(
-                format!(
-                    "SELECT value FROM {table} WHERE display = '{}' ORDER BY create_time",
-                    text
-                ),
-                |text: String| text,
-            )?;
-            box_infos.push(json!({
-                "display": text,
-                "values": t
-            }));
-        }
-        data.push(json!({
-            "ty": ty,
-            "text_infos": text_infos,
-            "time_infos": time_infos,
-            "box_infos": box_infos
-        }));
-    }
-    Ok(Response::ok(json!(data)))
+    Ok(Response::ok(json!(vec![
+        _get_custom_infos(0),
+        _get_custom_infos(1)
+    ])))
 }

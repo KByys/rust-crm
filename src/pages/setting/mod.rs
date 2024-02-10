@@ -1,11 +1,11 @@
 mod custom;
-mod option;
+pub mod option;
 use axum::{
     routing::{delete, get, post},
     Router,
 };
-pub use custom::{CUSTOM_BOX_FIELDS, CUSTOM_FIELDS, CUSTOM_FIELD_INFOS};
-pub use option::DataOptions;
+pub use custom::{STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS, Field, CustomFields};
+// pub use option::DataOptions;
 pub fn setting_router() -> Router {
     Router::new()
         .route("/box/option/infos", get(option::query_option_value))

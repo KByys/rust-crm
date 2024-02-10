@@ -1,4 +1,6 @@
 use lazy_static::lazy_static;
+use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
 
 lazy_static! {
@@ -10,7 +12,16 @@ lazy_static! {
         m
     };
 }
+#[derive(Debug, Deserialize)]
+struct Test {
+    key1: String,
+    key2: String,
+    key3: String,
+}
 
 fn main() {
-    println!("{:?}", md5::compute(b"12345678").0);
+    let value: Value = serde_json::from_str(&format!("{:?}", MY_HASHMAP.clone())).unwrap();
+    println!("{:#?}", value);
+    println!("{:#?}", serde_json::from_value::<HashMap<String, String>>(value.clone()));
+    println!("{:#?}", serde_json::from_value::<Test>(value.clone()));
 }

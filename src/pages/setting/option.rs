@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{extract::Path, http::HeaderMap, Json};
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::{json, Value};
@@ -6,108 +8,35 @@ use crate::{
     bearer,
     database::{c_or_r, get_conn, Database},
     debug_info,
-    libs::time::TIME,
+    libs::time::{TimeFormat, TIME},
     parse_jwt_macro,
     response::Response,
     ResponseResult,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(usize)]
-pub enum DataOptions {
-    CustomerType,
-    CustomerStatus,
-    CustomerTag,
-    Department,
-    CustomerRole,
-    Industry,
-    CustomerSource,
-    VisitTheme,
-    /// 订单类型
-    OrderType,
-    /// 销售单位
-    SalesUnit,
-    /// 仓库
-    StoreHouse,
-    ProductType,
-    ProductUnit,
-    /// 收款方式
-    Payment,
-    /// 订单进度
-    OrderProgress,
-}
-impl From<usize> for DataOptions {
-    fn from(value: usize) -> Self {
-        match value {
-            0 => DataOptions::CustomerType,
-            1 => DataOptions::CustomerStatus,
-            2 => DataOptions::CustomerTag,
-            3 => DataOptions::Department,
-            4 => DataOptions::CustomerRole,
-            5 => DataOptions::Industry,
-            6 => DataOptions::CustomerSource,
-            7 => DataOptions::VisitTheme,
-            8 => DataOptions::OrderType,
-            9 => DataOptions::SalesUnit,
-            10 => DataOptions::StoreHouse,
-            11 => DataOptions::ProductType,
-            12 => DataOptions::ProductUnit,
-            13 => DataOptions::Payment,
-            14 => DataOptions::OrderProgress,
-            _ => panic!("Invalid value {}", value),
-        }
-    }
-}
-impl Iterator for DataOptions {
-    type Item = Self;
+pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
+    "customer_type",
+    "customer_status",
+    "customer_tag",
+    "department",
+    "customer_role",
+    "industry",
+    "customer_source",
+    "visit_theme",
+    "order_type",
+    "sales_unit",
+    "store_house",
+    "product_type",
+    "product_unit",
+    "payment",
+    "order_progress",
+    "customer_level",
+];
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let n = *self as usize;
-        
-        if n < Self::max() - 1 {
-            *self = DataOptions::from(n + 1);
-            Some(n.into())
-        } else {
-            None
-        }
-    }
-}
-impl DataOptions {
-    pub fn max() -> usize {
-        15
-    }
-    pub fn first() -> Self {
-        Self::CustomerType
-    }
-    pub fn table_name(&self) -> &'static str {
-        match self {
-            DataOptions::CustomerType => "customer_type",
-            DataOptions::CustomerStatus => "customer_status",
-            DataOptions::CustomerTag => "customer_tag",
-            DataOptions::Department => "department",
-            DataOptions::CustomerRole => "customer_role",
-            DataOptions::Industry => "industry",
-            DataOptions::CustomerSource => "customer_source",
-            DataOptions::VisitTheme => "visit_theme",
-            DataOptions::OrderType => "order_type",
-            DataOptions::SalesUnit => "sales_unit",
-            DataOptions::StoreHouse => "storehouse",
-            DataOptions::ProductType => "product_type",
-            DataOptions::ProductUnit => "product_unit",
-            DataOptions::Payment => "payment",
-            DataOptions::OrderProgress => "order_progress",
-        }
-    }
-    pub fn table_statement(&self) -> String {
-        format!(
-            "CREATE TABLE IF NOT EXISTS {} (
-            value VARCHAR(30) NOT NULL, 
-            create_time VARCHAR(25),
-            PRIMARY KEY (value)
-        )",
-            self.table_name()
-        )
-    }
+macro_rules! get_drop_down_box {
+    ($index:expr) => {
+        op::some!(DROP_DOWN_BOX_ALL.get($index); ret Err(Response::invalid_value("ty值非法")))
+    };
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -125,14 +54,14 @@ struct OptionValue {
     delete_value: String,
     next_value: String,
 }
-use crate::perm::{verify_permissions, action::OtherGroup};
+use crate::perm::{action::OtherGroup, verify_permissions};
 macro_rules! parse_option {
     ($headers:expr, $value:expr, $begin:expr) => {
         {
             let bearer = bearer!(&$headers);
             let mut conn = get_conn()?;
             let id = parse_jwt_macro!(&bearer, &mut conn => true);
-            
+
             let role: String = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));
             if !role.eq("root") && !verify_permissions(&role, "other", OtherGroup::DROP_DOWN_BOX, None).await {
                 return Err(Response::permission_denied())
@@ -154,137 +83,321 @@ pub async fn insert_options(headers: HeaderMap, Json(value): Json<Value>) -> Res
     if info.info.value.is_empty() {
         return Err(Response::invalid_value("value不能为空字符串"));
     }
-    let opt = DataOptions::from(info.ty);
-    conn.query_drop(format!(
-        "INSERT IGNORE INTO {} (value, create_time) VALUES ('{}', '{}')",
-        opt.table_name(),
-        info.info.value,
-        time.format(crate::libs::time::TimeFormat::YYYYMMDD_HHMMSS)
-    ))?;
+    let mut value = info.info.value;
+    let name = *get_drop_down_box!(info.ty);
+    let mut level_key: Option<String> = None;
+    if info.ty == 15 {
+        let level = split_level(&value);
+        unsafe {
+            if let Some(map) = DROP_DOWN_BOX.map().get("customer_level") {
+                for v in map.keys() {
+                    let l = Level::from(v.as_str());
+                    if l.level == level.level {
+                        level_key = Some(v.clone());
+                        break;
+                    }
+                }
+            }
+        }
 
+        value = level.to_string();
+    }
+    conn.query_drop(format!(
+        "INSERT IGNORE INTO drop_down_box (name, value, create_time) VALUES ('{}', '{}', '{}')",
+        name,
+        value,
+        time.format(TimeFormat::YYYYMMDD_HHMMSS)
+    ))?;
+    unsafe {
+        if let Some(k) = level_key {
+            // op::some!(DROP_DOWN_BOX.map_mut().get_mut("customer_level"); 
+            //             ret Err(Response::unknown_err("错误代码：1000")))
+            // .remove_entry(&k);
+            conn.query_drop(
+                format!("DELETE FROM drop_down_box WHERE name='customer_level' AND value='{k}' LIMIT 1"),
+            )?;
+        }
+        DROP_DOWN_BOX.init(&mut conn)?;
+        // if !DROP_DOWN_BOX.contains(name, &value) {
+        //     DROP_DOWN_BOX
+        //         .map_mut()
+        //         .entry(name.to_string())
+        //         .or_default()
+        //         .insert(value, time.format(TimeFormat::YYYYMMDD_HHMMSS));
+        // }
+
+    }
     Ok(Response::empty())
 }
+pub static mut DROP_DOWN_BOX: DropDownBox = DropDownBox::new();
+#[derive(Debug)]
+pub struct DropDownBox {
+    // pub inner: Vec<(String, String, String)>,
+    pub map: Option<HashMap<String, HashMap<String, String>>>,
+}
+impl DropDownBox {
+    pub const fn new() -> DropDownBox {
+        DropDownBox {
+            // inner: Vec::new(),
+            map: None,
+        }
+    }
+    pub fn init(&mut self, conn: &mut PooledConn) -> mysql::Result<()> {
+        // self.inner = conn.query_map(
+        //     "SELECT name, value, create_time FROM drop_down_box ORDER BY create_time",
+        //     |s| s,
+        // )?;
+
+        let vec = conn.query_map(
+            "SELECT name, value, create_time FROM drop_down_box ORDER BY create_time",
+            |s: (String, String, String)| s,
+        )?;
+        let mut map: HashMap<_, HashMap<String, String>> = HashMap::new();
+        for (name, v, t) in vec {
+            map.entry(name).or_default().insert(v, t);
+        }
+        self.map = Some(map);
+
+        Ok(())
+    }
+    pub fn map(&self) -> &HashMap<String, HashMap<String, String>> {
+        self.map.as_ref().expect("unreachable code: map")
+    }
+    pub fn map_mut(&mut self) -> &mut HashMap<String, HashMap<String, String>> {
+        match &mut self.map {
+            Some(map) => map,
+            _ => unreachable!(),
+        }
+    }
+    pub fn remove(&mut self, name: &str, value: &str) {
+        if let Some(values) = self.map_mut().get_mut(name) {
+            values.remove_entry(value);
+        }
+        // let mut index = 0;
+        // while index < self.inner.len() {
+        //     let data = &self.inner[index];
+        //     if data.0.eq(name) && data.1.eq(value) {
+        //         self.inner.remove(index);
+        //         break;
+        //     } else {
+        //         index += 1;
+        //     }
+        // }
+    }
+
+    pub fn contains(&self, name: &str, value: &str) -> bool {
+        // self.inner.iter().any(|(n, v, _)| n.eq(name) && v.eq(value))
+        self.map().get(name).and_then(|v| v.get(value)).is_some()
+    }
+
+    pub fn get(&self, name: &str) -> Vec<&str> {
+        self.map().get(name).map(|v| {
+            let mut values: Vec<(&str, &str)> = v.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+            if name.eq("customer_level") {
+                values.sort_by(|(k1, _), (k2, _)| {
+                    k1.chars().next().cmp(&k2.chars().next())
+                });
+            } else {
+                values.sort_by(|(_, v1), (_, v2)| {
+                    v1.cmp(v2)
+                })
+            }
+            values.into_iter().map(|(k, _)|k).collect()
+        }).unwrap_or_default()
+    }
+    // pub fn update(&mut self, name: &str, old_value: &str, new_value: &str) {
+    //     // for item in &mut self.inner {
+    //     //     if item.0.eq(name) && item.1.eq(old_value) {
+    //     //         item.1 = new_value.to_owned();
+    //     //         break;
+    //     //     }
+    //     // }
+    //     if let Some(values) = self.map_mut().get_mut(name) {
+    //         if let Some((_k, v)) = values.remove_entry(old_value) {
+    //             values.insert(new_value.to_owned(), v);
+    //         } else {
+    //             dbg!("下拉字段未匹配");
+    //             panic!("测试")
+    //         }
+    //     }
+    // }
+
+    // pub fn get_all(&self) -> Vec<Vec<&(String, String, String)>> {
+    //     let mut data = Vec::new();
+    //     for n in DROP_DOWN_BOX_ALL {
+    //         data.push(self.get(n));
+    //     }
+    //     data
+    // }
+}
+
+struct Level {
+    level: char,
+    value: String,
+}
+impl std::fmt::Display for Level {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}-{}", self.level, self.value))
+    }
+}
+impl From<&str> for Level {
+    fn from(value: &str) -> Self {
+        let sp: Vec<_> = value.splitn(2, '-').collect();
+        if sp.len() == 2 {
+            let upper = sp[0].trim().to_uppercase();
+            println!("{}", upper);
+            let ch = upper.chars().next().unwrap_or(' ');
+            if ch.is_ascii_uppercase() {
+                return Level {
+                    level: ch,
+                    value: sp[1].trim().to_string(),
+                };
+            }
+        }
+        Level {
+            level: 'Z',
+            value: value.to_string(),
+        }
+    }
+}
+
+fn split_level(level: &str) -> Level {
+    unsafe {
+        let mut lsp = Level::from(level);
+        if lsp.level != 'Z' {
+            return lsp;
+        }
+        if let Some(levels) = DROP_DOWN_BOX.map().get("customer_level") {
+            let mut buf = Vec::new();
+            for k in levels.keys() {
+                let l1 = Level::from(k.as_str());
+                if lsp.level == l1.level {
+                    return lsp;
+                }
+                buf.push(l1.level);
+            }
+            buf.sort();
+            lsp.level = buf
+                .last()
+                .map(|last| op::ternary!(*last == 'Z' => 'Z'; (*last as u8 % b'Z' + 1) as char))
+                .unwrap_or('A');
+        } else {
+            lsp.level = 'A'
+        }
+        lsp
+    }
+}
+
 pub async fn update_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let (id, mut conn, info) = parse_option!(headers, value, true);
-    debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:?}", id, info));
-    conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    c_or_r(_update, &mut conn, &info, true)?;
+    debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:#?}", id, info));
+    // conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
+    c_or_r(_update, &mut conn, &info, false)?;
+
     Ok(Response::empty())
 }
 fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
-    let opt = DataOptions::from(param.ty);
-
-    if let DataOptions::Department = opt {
+    let name = *get_drop_down_box!(param.ty);
+    let mut new_value = param.info.new_value.clone();
+    unsafe {
+        if DROP_DOWN_BOX.map().get(name).is_some_and(|m|m.contains_key(&new_value)) {
+            return Err(Response::already_exist("修改的数据不能重复"));
+        }
+    }
+    if name == "department" {
         if param.info.old_value.eq("总经办") || param.info.new_value.eq("总经办") {
-            return Err(Response::invalid_value("总经办这个部门不允许做任何操作"));
+            return Err(Response::invalid_value("总经办这个部门不允许被修改"));
         }
         conn.query_drop(format!(
             "UPDATE user SET department = '{}' WHERE department = '{}'",
             param.info.new_value, param.info.old_value
         ))?;
+    } else if name == "customer_level" {
+        let old_level = Level::from(param.info.old_value.as_str());
+        let mut new_level = split_level(&param.info.new_value);
+        new_level.level = old_level.level;
+        new_value = new_level.to_string();
     }
+
     conn.query_drop(format!(
-        "UPDATE {} SET value = '{}' WHERE value = '{}'",
-        opt.table_name(),
-        param.info.new_value,
-        param.info.old_value
+        "UPDATE drop_down_box SET value = '{}' WHERE value = '{}' AND name = '{}' LIMIT 1",
+        new_value, param.info.old_value, name
     ))?;
+    unsafe {
+        // DROP_DOWN_BOX.update(name, &param.info.old_value, &new_value);
+        DROP_DOWN_BOX.init(conn)?;
+        println!("{:#?}", DROP_DOWN_BOX);
+    }
     Ok(())
 }
 
 pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let (id, mut conn, info) = parse_option!(headers, value, true);
-    debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:?}", id, info));
-
-    if info.ty == DataOptions::Department as usize {
-        if info.info.value.eq("总经办") {
-
-            return Err(Response::invalid_value("总经办这个部门不允许做任何操作"));
+    debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:#?}", id, info));
+    let name = *get_drop_down_box!(info.ty);
+    if name.eq("department") {
+        if info.info.delete_value.eq("总经办") {
+            return Err(Response::invalid_value("总经办这个部门不允许被删除"));
         }
-        let depart: Option<String> = conn.query_first(format!(
-            "SELECT value FROM department WHERE value = '{}'",
-            info.info.next_value
-        ))?;
-        if depart.is_none() {
-            return Err(Response::invalid_value("next_value必须存在"));
+        unsafe {
+            if !DROP_DOWN_BOX.contains("department", &info.info.next_value) {
+                return Err(Response::invalid_value("next_value必须存在"));
+            }
         }
     }
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
     c_or_r(_delete, &mut conn, &info, false)?;
+    unsafe { DROP_DOWN_BOX.remove(name, &info.info.value) }
     Ok(Response::empty())
 }
 fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
-    let opt = DataOptions::from(param.ty);
-    if let DataOptions::Department = opt {
+    let name = *get_drop_down_box!(param.ty);
+    if name.eq("department") {
         conn.query_drop(format!(
             "UPDATE user SET department = '{}' WHERE department = '{}'",
             param.info.next_value, param.info.delete_value
         ))?;
     }
+
     conn.query_drop(format!(
-        "DELETE FROM {} WHERE value = '{}'",
-        opt.table_name(),
-        param.info.delete_value
+        "DELETE FROM drop_down_box WHERE name = '{}' AND value = '{}' LIMIT 1",
+        name, param.info.delete_value
     ))?;
     Ok(())
 }
 
 pub async fn query_option_value() -> ResponseResult {
-    let mut data = Vec::new();
-    let mut conn = get_conn()?;
-    for opt in DataOptions::first() {
-       let info: Vec<String> = if opt == DataOptions::Department {
-            conn.query_map(
-               format!(
-                   "SELECT value FROM {} WHERE value != '总经办' ORDER BY create_time",
-                   opt.table_name() 
-               ),
-               |value| value,
-           )?
+    let data: Vec<Value> = unsafe {
+        DROP_DOWN_BOX_ALL
+            .iter()
+            .enumerate()
+            .map(|(i, k)| {
+                // let info = if let Some(v) = DROP_DOWN_BOX.map().get(*k) {
+                //     let mut info: Vec<_> = v.iter().collect();
+                //     info.sort_by(|v1, v2| v1.1.cmp(v2.1));
+                //     info.iter().map(|(k, _)| k.to_string()).collect()
+                // } else {
+                //     Vec::new()
+                // };
 
-        } else {
-
-            conn.query_map(
-               format!(
-                   "SELECT value FROM {} ORDER BY create_time",
-                   opt.table_name()
-               ),
-               |value| value,
-           )?
-        };
-        let ty = opt as usize;
-        data.push(json!({
-            "ty": ty,
-            "info": info
-        }))
-    }
+                json!({
+                    "ty": i,
+                    "info": DROP_DOWN_BOX.get(k)
+                })
+            })
+            .collect()
+    };
     Ok(Response::ok(json!(data)))
 }
 
 pub async fn query_specific_info(Path(ty): Path<usize>) -> ResponseResult {
-    if ty < DataOptions::max() {
-        let mut conn = get_conn()?;
-        let info: Vec<String> =  if ty == 3 {
-
-            conn.query_map(
-                format!(
-                    "SELECT value FROM {} WHERE value != '总经办' ORDER BY create_time",
-                    DataOptions::from(ty).table_name()
-                ),
-                |value| value,
-            )?
-        } else {
-            
-            conn.query_map(
-                format!(
-                    "SELECT value FROM {} ORDER BY create_time",
-                    DataOptions::from(ty).table_name()
-                ),
-                |value| value,
-            )?
-        };
-        Ok(Response::ok(json!({"ty": ty, "info": info})))
-    } else {
-        Err(Response::invalid_value(format!("ty: {} 错误", ty)))
+    let name = *get_drop_down_box!(ty);
+    let info:Vec<&str> = unsafe {
+        DROP_DOWN_BOX.get(name)
+    };
+    Ok(Response::ok(json!({
+        "ty": ty,
+        "info": info
     }
+    )))
 }

@@ -63,14 +63,17 @@ impl JWToken {
         // 检查用户是否存在
         let is_exist = if self.sub {
             conn.query_first::<String, String>(format!(
-                "SELECT id FROM user WHERE id = '{}'",
+                "SELECT u.id FROM user u WHERE u.id = '{}' AND NOT EXISTS( 
+                    SELECT 1 FROM leaver b WHERE b.id=u.id)",
                 self.id
             ))?
         } else {
-            conn.query_first(format!(
-                "SELECT id FROM customer_login WHERE id = '{}'",
-                self.id
-            ))?
+            // conn.query_first(format!(
+            //     "SELECT id FROM customer_login WHERE id = '{}'",
+            //     self.id
+            // ))?
+            // todo
+            None
         };
         if is_exist.is_none() {
             return Ok(TokenVerification::Error);
@@ -108,23 +111,6 @@ impl JWToken {
 }
 #[macro_export]
 macro_rules! parse_jwt_macro {
-    // 解析token，从中获取id信息, 同时验证权限，仅最高权限者可通过
-    // ($bearer:expr, $conn:expr) => {{
-    //     match $crate::token::parse_jwt($bearer) {
-    //         Some(jwt) => {
-    //             if jwt.sub && jwt.verify($conn)?.is_ok() {
-    //                 use $crate::libs::perm::Identity;
-    //                 match Identity::new(&jwt.id, $conn)? {
-    //                     Identity::Boss => jwt.id,
-    //                     _ => return Err(Response::permission_denied()),
-    //                 }
-    //             } else {
-    //                 return Err($crate::Response::token_error("Invalid Token"));
-    //             }
-    //         }
-    //         _ => return Err($crate::Response::token_error("Invalid Token")),
-    //     }
-    // }};
     // 解析token，从中获取id信息
     ($bearer:expr, $conn:expr => $sub:expr) => {
         match $crate::token::parse_jwt($bearer) {
@@ -145,7 +131,7 @@ pub fn parse_jwt(bearer: &Bearer) -> Option<JWToken> {
     let token: Token<Header, BTreeMap<String, String>, _> =
         VerifyWithKey::verify_with_key(bearer.token(), &key).ok()?;
     let claims = token.claims();
-    Some(JWToken {
+    Some( JWToken {
         id: claims.get("id")?.into(),
         sub: claims.get("sub")?.parse().ok()?,
         iss: claims.get("iss")?.into(),

@@ -1,12 +1,11 @@
 use axum::{
     extract::{Multipart, Path},
     http::{HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
-// use mysql_common::prelude::FromRow;
 use op::ternary;
 use rand::random;
 use regex::Regex;
@@ -15,14 +14,14 @@ use serde_json::json;
 
 use crate::{
     base64_encode, bearer,
-    common::{empty_deserialize_to_none, Person},
+    common::empty_deserialize_to_none,
     database::{c_or_r_more, get_conn},
     libs::{gen_id, parse_multipart, time::TIME, FilePart},
     pages::account::get_user,
     parse_jwt_macro,
     perm::verify_permissions,
     response::BodyFile,
-    Response, ResponseResult,
+    Response, ResponseResult, ID,
 };
 
 #[derive(Deserialize, Serialize, Default, FromRow)]
@@ -30,13 +29,17 @@ pub struct SignRecord {
     #[serde(default)]
     id: String,
     #[serde(default)]
-    signer: Person,
+    signer: String,
+    #[serde(skip_deserializing)]
+    signer_name: String,
     #[serde(deserialize_with = "deserialize_time")]
     sign_time: String,
     address: String,
     location: String,
     #[serde(deserialize_with = "empty_deserialize_to_none")]
-    customer: Option<Person>,
+    customer: Option<String>,
+    #[serde(skip_deserializing)]
+    customer_name: Option<String>,
     #[serde(skip_deserializing)]
     file: String,
     content: String,
@@ -47,6 +50,7 @@ pub fn sign_router() -> Router {
         .route("/sign/in/json", post(sign_only_json))
         .route("/sign/records", post(query_sign_records))
         .route("/sign/img/:img", get(get_file))
+        .route("/sign/delete", delete(delete_sign))
 }
 pub fn deserialize_time<'de, D>(de: D) -> Result<String, D::Error>
 where
@@ -69,7 +73,7 @@ async fn sign_only_json(header: HeaderMap, Json(value): Json<serde_json::Value>)
     let time = TIME::now()?;
     let mut sign: SignRecord = serde_json::from_value(value)?;
     sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
-    sign.signer.phone = id;
+    sign.signer = id;
     conn.query_drop("BEGIN")?;
     c_or_r_more(_insert, &mut conn, &sign, &[])?;
     Ok(Response::empty())
@@ -83,7 +87,7 @@ async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let time = TIME::now()?;
     let mut sign: SignRecord = serde_json::from_str(&data.json)?;
     sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
-    sign.signer.phone = id;
+    sign.signer = id;
     let mut files = Vec::new();
     for part in &data.files {
         let id = gen_id(&time, part.filename.as_deref().unwrap_or("unknown.jpg"));
@@ -105,8 +109,8 @@ fn _insert(
         VALUES (:id, :signer, :customer, :address, :sign_time, :file, :content)",
         params! {
             "id" => &data.id,
-            "signer" => &data.signer.phone(),
-            "customer" => data.customer.as_ref().map_or("NULL", |c|c.phone()),
+            "signer" => &data.signer,
+            "customer" => &data.customer,
             "address" => &data.address,
             "location" => &data.location,
             "sign_time" => &data.sign_time,
@@ -142,10 +146,6 @@ where
     ))
 }
 
-// async fn check(role: &str, data: Option<&[&str]>) -> Result<(), Response> {
-//     let f = verify_permissions(role, "other", "query_sign_in", data).await;
-//     ternary!(f => Ok(()); Err(Response::permission_denied()))
-// }
 macro_rules! check_perm {
     ($role:expr, $data:expr) => { {
         let f = verify_permissions($role, "other", "query_sign_in", $data).await;
@@ -164,26 +164,19 @@ async fn query_sign_records(
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Record = serde_json::from_value(value)?;
     let user = get_user(&id, &mut conn)?;
-    let mut records = match data.scope {
+    let records = match data.scope {
         // 个人签到记录
         0 => {
-            if user.id == data.data {
-                __query(&mut conn, Some(&id), &[user.department], &data.date_range)?
-            } else if !data.data.is_empty() {
+            if user.id == data.data || data.data.is_empty() {
+                select_sign(&user.id, &mut conn)?
+            } else  {
                 let signer = get_user(&data.data, &mut conn)?;
                 if user.department == signer.department {
                     check_perm!(&user.role, None)
                 } else {
                     check_perm!(&user.role, Some(&[&"all"]))
                 }
-                __query(
-                    &mut conn,
-                    Some(&data.data),
-                    &[signer.department],
-                    &data.date_range,
-                )?
-            } else {
-                return Err(Response::invalid_value("data为空字符串"));
+                select_sign(&data.data, &mut conn)?
             }
         }
         // 部门签到记录
@@ -193,78 +186,71 @@ async fn query_sign_records(
             } else {
                 check_perm!(&user.role, Some(&[&"all"]))
             }
-            __query(&mut conn, None, &[user.department], &data.date_range)?
+            select_sign_with_depart(&data, &mut conn, &data.data)?
         }
         // 全公司签到记录
         2 => {
             check_perm!(&user.role, Some(&[&"all"]));
-            let departs = conn.query_map(
-                "SELECT * FROM department WHERE value != '总经办'",
-                |f: String| f,
-            )?;
-            __query(&mut conn, None, &departs, &data.date_range)?
+            select_company_signs(&data, &mut conn)?
         }
         _ => return Err(Response::invalid_value("scope数值不对")),
     };
-    complete_data(&mut records, &mut conn)?;
     Ok(Response::ok(json!(records)))
 }
-fn complete_data(
-    data: &mut [(String, Vec<SignRecord>)],
+
+fn select_sign(signer: &str, conn: &mut PooledConn) -> mysql::Result<Vec<SignRecord>> {
+    conn.query_map(
+        format!(
+            "SELECT DISTINCT s.*, u.name as signer_name, c.name as customer_name 
+            FROM sign s 
+            JOIN user ON u.id = s.signer
+            LEFT JOIN customer c ON c.id = s.customer
+            WHERE s.signer = '{signer}'"
+        ),
+        |r| r,
+    )
+}
+fn select_sign_with_depart(
+    r: &Record,
     conn: &mut PooledConn,
-) -> mysql::Result<()> {
-    for (_, records) in data {
-        for r in records {
-            r.signer.name = conn
-                .query_first(format!(
-                    "SELECT name FROM user WHERE id = '{}'",
-                    r.signer.phone
-                ))?
-                .unwrap_or_default();
-            if let Some(c) = &mut r.customer {
-                c.name = conn
-                    .query_first(format!(
-                        "SELECT name FROM customer WHERE id = '{}'",
-                        r.signer.phone
-                    ))?
-                    .unwrap_or_default();
-            }
-        }
-    }
-    Ok(())
+    depart: &str,
+) -> mysql::Result<Vec<SignRecord>> {
+    conn.query_map(
+        format!(
+            "SELECT s.*, u.name as signer_name, c.name as customer_name FROM sign s
+        JOIN user u ON u.department='{depart}' AND u.id = s.signer
+        LEFT JOIN customer c ON c.id = s.customer
+        WHERE sign_time >= '{}' AND sign_time <= '{}'
+        ORDER BY DESC s.sign_time",
+            r.date_range.0, r.date_range.1
+        ),
+        |r| r,
+    )
+}
+
+fn select_company_signs(r: &Record, conn: &mut PooledConn) -> mysql::Result<Vec<SignRecord>> {
+    conn.query_map(
+        format!(
+            "SELECT s.*, u.name as signer_name, c.name as customer_name FROM sign s
+        LEFT JOIN customer c ON c.id = s.customer
+        JOIN user u ON u.id = s.signer
+        WHERE s.sign_time >= '{}' AND s.sign_time <= '{}'
+        ORDER BY DESC s.sign_time",
+            r.date_range.0, r.date_range.1
+        ),
+        |r| r,
+    )
 }
 async fn get_file(Path(img): Path<String>) -> Result<BodyFile, (StatusCode, String)> {
     BodyFile::new_with_base64_url("resourses/sign", &img)
 }
-fn __query(
-    conn: &mut PooledConn,
-    signer: Option<&str>,
-    depart: &[String],
-    (start, end): &(String, String),
-) -> Result<Vec<(String, Vec<SignRecord>)>, Response> {
-    let mut records = Vec::new();
-    if let Some(signer) = signer {
-        let record = conn.query_map(
-            format!(
-                "SELECT *  FROM sign WHERE signer = '{signer}' 
-                AND (sign_time >= '{}' AND sign_time <= '{}') ORDER BY sign_time",
-                start, end
-            ),
-            |r| r,
-        )?;
-        records.push((depart[0].to_string(), record))
-    } else {
-        for d in depart {
-            let record = conn.query_map(
-                format!(
-                    "SELECT DISTINCT s.* FROM sign s JOIN user u ON u.id = s.signer 
-                        WHERE u.department = '{d}'AND (s.sign_time >= '{start}' AND s.sign_time <= '{end}') ORDER BY sign_time"
-                ),
-                |f| f,
-            )?;
-            records.push((d.to_string(), record))
-        }
-    }
 
-    Ok(records)
+async fn delete_sign(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let sign_id: ID = serde_json::from_value(value)?;
+    conn.query_drop(format!("DELETE sign WHERE id = '{}' AND signer = '{id}' LIMIT 1", sign_id.id))?;
+    Ok(Response::empty())
 }
+

@@ -2,10 +2,13 @@ use axum::Router;
 
 mod account;
 mod form;
-mod func;
+pub mod func;
 mod message;
 mod setting;
-pub use setting::{DataOptions, CUSTOM_BOX_FIELDS, CUSTOM_FIELDS, CUSTOM_FIELD_INFOS};
+pub use setting::{
+    option::{DropDownBox, DROP_DOWN_BOX, DROP_DOWN_BOX_ALL},
+    CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS
+};
 
 pub fn pages_router() -> Router {
     account::account_router()

@@ -11,18 +11,20 @@ use serde_json::json;
 use crate::{
     base64_encode, bearer,
     database::{c_or_r, c_or_r_more, get_conn},
-    debug_info, do_if,
+    debug_info,
     libs::{
         gen_file_link, parse_multipart, time::{TimeFormat, TIME}, FilePart
     },
-    pages::{account::User, CUSTOM_FIELD_INFOS},
+    pages::account::User,
     parse_jwt_macro,
     perm::ROLES_GROUP_MAP,
     response::BodyFile,
-    Response, ResponseResult, TextInfos, ID,
+    Response, ResponseResult, Field, ID,
 };
 
 use super::customer::CCInfos;
+
+// use super::customer::CCInfos;
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 struct Product {
     base_infos: BaseInfos,
@@ -169,13 +171,13 @@ fn _insert(
         "storehouse" => &base_infos.storehouse,
     })?;
     for i in 0..3 {
-        let table = CUSTOM_FIELD_INFOS[1][i];
+        // let table = CUSTOM_FIELD_INFOS[1][i];
         if custom_infos.get(i).is_empty() {
             continue;
         }
         conn.query_drop(format!(
-            "INSERT INTO {table} (id, display, value) VALUES {}",
-            custom_infos.generate_sql(i, &base_infos.id)
+            "INSERT INTO custom_field_data (fields, ty, id, display, value) VALUES {}",
+            custom_infos.generate_sql(i,1, &base_infos.id)
         ))?;
     }
     if let Some(path) = &base_infos.cover {
@@ -253,11 +255,11 @@ fn _update(
         "storehouse" => &base_infos.storehouse,
     })?;
     for i in 0..3 {
-        let table = CUSTOM_FIELD_INFOS[0][i];
+        // let table = CUSTOM_FIELD_INFOS[0][i];
         // 修改自定义字段
         for values in custom_infos.get(i) {
             conn.query_drop(format!(
-                "UPDATE {table} SET value = '{}' WHERE id = '{}' AND display = '{}'",
+                "UPDATE custom_field_data SET value = '{}' WHERE id = '{}' AND display = '{}' AND fields=1 AND ty={i}",
                 values.value, base_infos.id, values.display
             ))?;
         }
@@ -300,8 +302,8 @@ async fn query_product_infos(Json(value): Json<serde_json::Value>) -> ResponseRe
     } else {
         format!("product_type = '{}' AND {stock}", data.ty)
     };
-    let f = do_if!(data.storehouse.is_empty() => f,  
-        do_if!(f.is_empty() => format!("WHERE storehouse = '{}'", data.storehouse), 
+    let f = op::ternary!(data.storehouse.is_empty() => f;  
+        op::ternary!(f.is_empty() => format!("WHERE storehouse = '{}'", data.storehouse);
             format!("WHERE {f} AND storehouse = '{}'", data.storehouse)));
     let mut base_infos: Vec<BaseInfos> =
         conn.query_map(format!("SELECT * FROM product {f}"), |d| d)?;
@@ -319,10 +321,10 @@ async fn query_product_infos(Json(value): Json<serde_json::Value>) -> ResponseRe
     for info in base_infos {
         let mut custom_infos = CCInfos::default();
         for i in 0..=2 {
-            let infos: Vec<TextInfos> = conn.query_map(
+            let infos: Vec<Field> = conn.query_map(
                 format!(
-                    "SELECT display, value FROM {} WHERE id = '{}'",
-                    CUSTOM_FIELD_INFOS[1][i], info.id
+                    "SELECT display, value FROM custom_field_data WHERE id = '{}' AND fields=1 AND ty={i}",
+                    info.id
                 ),
                 |info| info,
             )?;
@@ -370,9 +372,10 @@ async fn delete_product(
     }
 }
 fn _delete(conn: &mut PooledConn, product: &BaseInfos) -> Result<(), Response> {
-    for table in CUSTOM_FIELD_INFOS[1] {
-        conn.query_drop(format!("DELETE FROM {table} WHERE id = '{}'", product.id))?;
-    }
+    // for table in CUSTOM_FIELD_INFOS[1] {
+    //     conn.query_drop(format!("DELETE FROM {table} WHERE id = '{}'", product.id))?;
+    // }
+    conn.query_drop(format!("DELETE FROM custom_field_data WHERE id = '{}' AND field=1", product.id))?;
     conn.query_drop(format!(
         "DELETE FROM product WHERE id = '{}' LIMIT 1",
         product.id

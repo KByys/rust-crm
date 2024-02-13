@@ -7,7 +7,7 @@ use base64::prelude::Engine;
 
 use crate::Response;
 
-use self::time::TIME;
+pub use self::time::{TIME, TimeFormat};
 /// base64 url safe encode
 pub fn base64_encode(input: impl AsRef<[u8]>) -> String {
     base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(input)
@@ -18,16 +18,16 @@ pub fn base64_decode(input: impl AsRef<[u8]>) -> Result<Vec<u8>, base64::DecodeE
     base64::prelude::BASE64_URL_SAFE_NO_PAD.decode(input)
 }
 /// 三目运算符，用宏简单实现
-#[macro_export]
-macro_rules! do_if {
-    ($pat:expr => $suc:expr, $e:expr) => {
-        if $pat {
-            $suc
-        } else {
-            $e
-        }
-    };
-}
+// #[macro_export]
+// macro_rules! do_if {
+//     ($pat:expr => $suc:expr, $e:expr) => {
+//         if $pat {
+//             $suc
+//         } else {
+//             $e
+//         }
+//     };
+// }
 pub struct FilePart {
     pub bytes: Vec<u8>,
     pub filename: Option<String>,

@@ -3,7 +3,6 @@ use std::cmp::Ordering;
 use crate::{
     bearer,
     database::get_conn,
-    do_if,
     libs::{
         time::{TimeFormat, TIME},
     },
@@ -39,7 +38,7 @@ async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> R
     ))?;
     if salesman.is_some_and(|s| s == id) {
         let date = TIME::now()?;
-        let scope = do_if!(data.public => 2, 1);
+        let scope = op::ternary!(data.public => 2; 1);
         println!("{:?}", date.format(TimeFormat::YYYYMMDD_HHMM));
         conn.query_drop(format!(
             "UPDATE customer SET push_to_sea_date = '{}', scope = {scope} WHERE id = '{}' AND scope = 0",
@@ -106,11 +105,16 @@ struct SeaInfo {
     #[mysql(rename = "push_to_sea_date")]
     time: String,
 }
+
+
+
+
 async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Sea = serde_json::from_value(value)?;
+    
     // let mut infos = match Identity::new(&id, &mut conn)? {
     //     Identity::Administrator(_, d) => query(&mut conn, &data, &d)?,
     //     Identity::Boss => query(&mut conn, &data, &data.department)?,

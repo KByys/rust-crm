@@ -164,6 +164,9 @@ pub async fn verify_permissions(
         })
 }
 
+
+
+
 async fn get_perm(headers: HeaderMap) -> ResponseResult {
     let mut conn = get_conn()?;
     let bearer = bearer!(&headers);

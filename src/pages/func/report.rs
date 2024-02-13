@@ -2,9 +2,8 @@ use std::cmp::Ordering;
 
 use crate::{
     bearer,
-    common::{empty_deserialize_to_none, Person},
+    common::empty_deserialize_to_none,
     database::get_conn,
-    do_if,
     libs::{
         gen_id,
         time::{TimeFormat, TIME},
@@ -17,7 +16,6 @@ use axum::{
     Json, Router,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
-use mysql_common::prelude::FromRow;
 use serde_json::json;
 
 pub fn report_router() -> Router {
@@ -31,78 +29,45 @@ pub fn report_router() -> Router {
         .route("/report/get/reply", get(get_report_replies))
 }
 
-// #[derive(Debug, serde::Serialize, Default, Eq)]
-// struct User {
-//     name: String,
-//     phone: String,
-// }
-// impl PartialEq for User {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.name == other.name
-//     }
-// }
-// #[allow(clippy::non_canonical_partial_ord_impl)]
-// impl PartialOrd for User {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         self.name.partial_cmp(&other.name)
-//     }
-// }
-// impl Ord for User {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         self.name.cmp(&other.name)
-//     }
-// }
-// impl<'de> serde::Deserialize<'de> for User {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: serde::Deserializer<'de>,
-//     {
-//         let name: String = serde::Deserialize::deserialize(deserializer)?;
-//         Ok(User::from(name))
-//     }
-// }
-// impl From<String> for User {
-//     fn from(phone: String) -> Self {
-//         User {
-//             phone,
-//             name: String::new(),
-//         }
-//     }
-// }
-// impl FromValue for User {
-//     type Intermediate = String;
-// }
-#[derive(Debug, serde::Serialize, FromRow)]
+#[derive(Debug, serde::Serialize, mysql_common::prelude::FromRow)]
 struct ReportReply {
     id: String,
     contents: String,
-    respondent: Person,
+    respondent: String,
+    respondent_name: String,
     create_time: String,
     report_id: String,
 }
-// fn deserialize_empty_to_none<'de, D>(de: D) -> Result<Option<User>, D::Error>
-// where
-//     D: Deserializer<'de>,
-// {
-//     let value: Option<String> = Deserialize::deserialize(de)?;
-//     Ok(value.and_then(|v| do_if!(v.is_empty() => None, Some(User::from(v)))))
-// }
-#[derive(Debug, serde::Deserialize, serde::Serialize, Default)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Default, mysql_common::prelude::FromRow)]
 pub struct Report {
     #[serde(default)]
     id: String,
+
     #[serde(default)]
-    applicant: Person,
-    reviewer: Person,
+    applicant: String,
+    #[serde(skip_deserializing)]
+    applicant_name: String,
+
+    reviewer: String,
+    #[serde(skip_deserializing)]
+    reviewer_name: String,
+
     ty: usize,
     #[serde(default)]
     status: usize,
     #[serde(skip_deserializing)]
     create_time: String,
+
     #[serde(deserialize_with = "empty_deserialize_to_none")]
-    cc: Option<Person>,
+    cc: Option<String>,
+    #[serde(skip_deserializing)]
+    cc_name: Option<String>,
+
     #[serde(deserialize_with = "empty_deserialize_to_none")]
-    ac: Option<Person>,
+    ac: Option<String>,
+    #[serde(skip_deserializing)]
+    ac_name: Option<String>,
+
     contents: String,
     #[serde(skip_deserializing)]
     send_time: Option<String>,
@@ -110,39 +75,6 @@ pub struct Report {
     processing_time: Option<String>,
     #[serde(default)]
     opinion: Option<String>,
-}
-impl FromRow for Report {
-    fn from_row_opt(row: mysql_common::Row) -> Result<Self, mysql_common::FromRowError>
-    where
-        Self: Sized,
-    {
-        let mut report = Report::default();
-        let columns = row.columns();
-        for (i, v) in row.unwrap().into_iter().enumerate() {
-            match columns[i].name_str().as_ref() {
-                "dsf" => {
-
-                }
-                _ => panic!("不允许出现")
-            }
-        }
-        Ok(report)
-    }
-}
-
-impl Report {
-    fn ac(&self) -> Option<&Person> {
-        match &self.ac {
-            Some(ac) => Some(ac),
-            _ => None,
-        }
-    }
-    fn cc(&self) -> Option<&Person> {
-        match &self.cc {
-            Some(ac) => Some(ac),
-            _ => None,
-        }
-    }
 }
 
 async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
@@ -154,7 +86,7 @@ async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) ->
     if !(0..3).contains(&data.ty) {
         return Err(Response::invalid_value("ty的值不对"));
     }
-    data.applicant = Person::from(id);
+    data.applicant = id;
     let time = TIME::now()?;
     data.id = gen_id(
         &time,
@@ -163,14 +95,14 @@ async fn add_report(headers: HeaderMap, Json(value): Json<serde_json::Value>) ->
     conn.exec_drop("INSERT INTO report (id, applicant, reviewer, ty, status, create_time, send_time, cc, ac, contents) 
         VALUES (:id, :applicant, :reviewer, :ty, :status, :create_time, :send_time, :cc, :ac, :contents)", params! {
             "id" => &data.id,
-            "applicant" => &data.applicant.phone,
-            "reviewer" => &data.reviewer.phone,
-            "status" => do_if!(data.status == 1 => 1, 0),
+            "applicant" => &data.applicant,
+            "reviewer" => &data.reviewer,
+            "status" => op::ternary!(data.status == 1 => 1; 0),
             "ty" => data.ty,
             "create_time" => time.format(TimeFormat::YYYYMMDD_HHMMSS),
             "send_time" => time.format(TimeFormat::YYYYMMDD_HHMMSS),
-            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
-            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
+            "cc" => data.cc,
+            "ac" => data.ac,
             "contents" => &data.contents,
         })?;
     Ok(Response::empty())
@@ -203,13 +135,13 @@ async fn process_report(
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Message = serde_json::from_value(value)?;
-    let status = do_if!(data.ok => 2, 3);
+    let status = op::ternary!(data.ok => 2; 3);
     let Some::<Report>(r) =
         conn.query_first(format!("SELECT * FROM report WHERE id = '{}'", data.id))?
     else {
         return Err(Response::not_exist("该报告不存在"));
     };
-    if r.reviewer.phone != id {
+    if r.reviewer != id {
         return Ok(Response::permission_denied());
     } else if r.status != 1 {
         return Err(Response::dissatisfy("该报告目前未发送或已被批阅"));
@@ -238,15 +170,19 @@ async fn update_report(headers: HeaderMap, Json(value): Json<serde_json::Value>)
         return Err(Response::dissatisfy("只能修改未审批的报告"));
     }
 
-    conn.exec_drop(format!("UPDATE report SET reviewer=:reviewer, ty=:ty, cc=:cc, ac=:ac, contents=:contents
-        WHERE id = '{}' AND applicant = '{}' LIMIT 1 ", data.id, id), 
+    conn.exec_drop(
+        format!(
+            "UPDATE report SET reviewer=:reviewer, ty=:ty, cc=:cc, ac=:ac, contents=:contents
+        WHERE id = '{}' AND applicant = '{}' LIMIT 1 ",
+            data.id, id
+        ),
         params! {
-            "reviewer" => &data.reviewer.phone,
+            "reviewer" => &data.reviewer,
             "ty" => data.ty,
-            "cc" => data.cc().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
-            "ac" => data.ac().map_or(mysql::Value::NULL, |e|mysql::Value::Bytes(e.phone.as_bytes().to_vec())),
-            "contents" => &data.contents 
-        }
+            "cc" => data.cc,
+            "ac" => data.ac,
+            "contents" => &data.contents
+        },
     )?;
     Ok(Response::empty())
 }
@@ -273,7 +209,7 @@ macro_rules! change {
     (string $arg:expr, $null:expr, $name:expr) => {
         {
             if $arg.is_empty() {
-                op::ternary!($null => "IS NOT NULL OR {} IS NULL"; "IS NOT NULL").into()
+                op::ternary!($null => format!("IS NOT NULL OR {} IS NULL", $name); "IS NOT NULL".into())
             } else {
                 format!("= '{}'", $arg)
             }
@@ -281,10 +217,11 @@ macro_rules! change {
     };
 }
 
-fn query_statement(msg: &Message) -> String {
-    format!(
-        "SELECT r.*, appr.name as appr_name, rev.name as rev_name, 
-        cc.name as cc_name, ac.name as acc_name 
+fn _query_report(msg: &Message, conn: &mut PooledConn) -> mysql::Result<Vec<Report>> {
+    conn.query_map(
+        format!(
+            "SELECT r.*, appr.name as applicant_name, rev.name as reviewer_name, 
+        cc.name as cc_name, ac.name as ac_name 
         FROM report r
         LEFT JOIN user appr ON appr.id=r.applicant 
         LEFT JOIN user rev ON rev.id=r.reviewer
@@ -296,12 +233,14 @@ fn query_statement(msg: &Message) -> String {
             (r.cc IS NOT NULL AND r.ac IS NOT NULL)
         ) AND (r.ty {}) AND (r.status {}) AND (r.applicant {}) 
         AND (r.reviewer {}) AND (r.cc {}) AND (r.ac {})",
-        change!(number msg.ty, 0..=2),
-        change!(number msg.status, 0..=3),
-        change!(string msg.applicant, false, ""),
-        change!(string msg.reviewer, false, ""),
-        change!(string msg.cc, true, "r.cc"),
-        change!(string msg.ac, true, "r.ac"),
+            change!(number msg.ty, 0..=2),
+            change!(number msg.status, 0..=3),
+            change!(string msg.applicant, false, ""),
+            change!(string msg.reviewer, false, ""),
+            change!(string msg.cc, true, "r.cc"),
+            change!(string msg.ac, true, "r.ac"),
+        ),
+        |r| r,
     )
 }
 
@@ -310,68 +249,17 @@ async fn query_reports(headers: HeaderMap, Json(value): Json<serde_json::Value>)
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Message = serde_json::from_value(value)?;
-    let mut filter = if data.ty <= 2 {
-        format!("ty = {}", data.ty)
-    } else {
-        // 所有
-        "ty >= 0".to_string()
-    };
-    match data.status {
-        0 => filter.push_str(" AND status = 0"),
-        1 => filter.push_str(" AND status = 1"),
-        2 => filter.push_str(" AND status = 2"),
-        3 => filter.push_str(" AND status = 3"),
-        4 => (),
-        _ => return Err(Response::ok(json!("status 非法"))),
-    };
     if data.applicant != id && data.reviewer != id && data.cc != id {
         return Err(Response::permission_denied());
     }
-    if !data.applicant.is_empty() {
-        filter.push_str(&format!(" AND applicant = '{}'", data.applicant))
-    }
-    if !data.reviewer.is_empty() {
-        filter.push_str(&format!(" AND reviewer = '{}'", data.reviewer))
-    }
-    if !data.cc.is_empty() {
-        filter.push_str(&format!(" AND cc = '{}'", data.cc))
-    }
-    if !data.ac.is_empty() {
-        filter.push_str(&format!(" AND ac = '{}'", data.ac))
-    }
-    println!("{}", filter);
-    let reports: Vec<Report> =
-        conn.query_map(format!("SELECT * FROM report WHERE {filter}"), |r| r)?;
+    let reports = _query_report(&data, &mut conn)?;
     let mut res = Vec::new();
-    for mut report in reports {
+    for report in reports {
         let replies = get_replies(&report.id, &mut conn)?;
-        report.applicant.name = conn
-            .query_first(format!(
-                "SELECT name FROM user WHERE id = '{}'",
-                report.applicant.phone
-            ))?
-            .unwrap_or_default();
-        report.reviewer.name = conn
-            .query_first(format!(
-                "SELECT name FROM user WHERE id = '{}'",
-                report.reviewer.phone
-            ))?
-            .unwrap_or_default();
-        report.ac = get_name(&mut conn, report.ac(), "customer");
-        report.cc = get_name(&mut conn, report.cc(), "user");
         res.push(ResponseData { report, replies })
     }
     sort_reports(&mut res, data.sort);
     Ok(Response::ok(json!(res)))
-}
-fn get_name(conn: &mut PooledConn, u: Option<&Person>, table: &str) -> Option<Person> {
-    let u = u?;
-    conn.query_first(format!(
-        "SELECT id, name FROM {table} WHERE id = '{}'",
-        u.phone
-    ))
-    .ok()
-    .and_then(|r| r.map(|(phone, name)| Person { name, phone }))
 }
 fn sort_reports(data: &mut [ResponseData], sort: usize) {
     let sort = match sort {
@@ -383,7 +271,7 @@ fn sort_reports(data: &mut [ResponseData], sort: usize) {
             |v1: &ResponseData, v2: &ResponseData| v1.report.create_time.cmp(&v2.report.create_time)
         }
         3 => |v1: &ResponseData, v2: &ResponseData| {
-            v1.report.applicant.name.cmp(&v2.report.applicant.name)
+            v1.report.applicant_name.cmp(&v2.report.applicant_name)
         },
         4 => |v1: &ResponseData, v2: &ResponseData| v1.report.reviewer.cmp(&v2.report.reviewer),
         5 => |v1: &ResponseData, v2: &ResponseData| v1.report.cc.cmp(&v2.report.cc),
@@ -420,7 +308,10 @@ async fn get_report_replies(Json(value): Json<serde_json::Value>) -> ResponseRes
 
 fn get_replies(id: &str, conn: &mut PooledConn) -> mysql::Result<Vec<ReportReply>> {
     conn.query_map(
-        format!("SELECT * FROM report_reply WHERE id = '{id}' ORDER BY create_time"),
+        format!(
+            "SELECT r.*, u.name as respondent_name FROM report_reply r 
+            LEFT JOIN user u ON u.id=r.respondent WHERE r.id = '{id}' ORDER BY r.create_time"
+        ),
         |r| r,
     )
 }

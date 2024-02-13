@@ -110,6 +110,11 @@ impl Response {
 
 impl From<mysql::Error> for Response {
     fn from(value: mysql::Error) -> Self {
+        if let mysql::Error::MySqlError(err) = &value {
+            if err.code == 1062 {
+                return Response::already_exist(format!("重复添加，错误信息：{err}"));
+            }
+        }
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             -1,

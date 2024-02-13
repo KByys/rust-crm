@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use axum::{
+    extract::Path,
     http::HeaderMap,
     routing::{get, post},
     Json, Router,
@@ -21,9 +24,10 @@ use crate::{
 };
 /// 员工数据
 #[derive(Debug, serde::Serialize, FromRow, serde::Deserialize)]
-#[mysql(table_name = "user")]
 pub struct User {
+    #[serde(default)]
     pub id: String,
+    pub smartphone: String,
     pub name: String,
     #[allow(unused)]
     #[serde(skip_serializing)]
@@ -43,11 +47,12 @@ pub fn account_router() -> Router {
     Router::new()
         .route("/user/login", post(login::user_login))
         .route("/root/register", post(register::register_root))
-        .route("/user/data", post(query_user_data))
-        .route("/customer/login", post(login::customer_login))
+        .route("/user/list/:id", post(query_list_data))
+        .route("/user/count/:id", post(query_depart_count))
+        // .route("/customer/login", post(login::customer_login))
         .route("/user/register", post(register::register_user))
         .route("/user/set/psw", post(set_user_password))
-        .route("/customer/set/psw", post(set_customer_password))
+        // .route("/customer/set/psw", post(set_customer_password))
         .route("/role/infos", get(get_role))
 }
 
@@ -61,28 +66,28 @@ async fn get_role() -> ResponseResult {
 struct Password {
     password: String,
 }
-async fn set_customer_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => false);
-    let password: Password = serde_json::from_value(value)?;
-    let digest = md5::compute(password.password);
-    let time = TIME::now()?;
-    conn.exec_drop(
-        "UPDATE customer_login SET password = :password WHERE id = :id",
-        params! {
-            "password" => digest.0,
-            "id" => &id
-        },
-    )?;
-    conn.query_drop(format!(
-        "INSERT INTO token (ty, id, tbn) VALUES (1, '{}', {}) ON DUPLICATE KEY UPDATE tbn = {}",
-        id,
-        time.naos(),
-        time.naos()
-    ))?;
-    Ok(Response::empty())
-}
+// async fn set_customer_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+//     let bearer = bearer!(&headers);
+//     let mut conn = get_conn()?;
+//     let id = parse_jwt_macro!(&bearer, &mut conn => false);
+//     let password: Password = serde_json::from_value(value)?;
+//     let digest = md5::compute(password.password);
+//     let time = TIME::now()?;
+//     conn.exec_drop(
+//         "UPDATE customer_login SET password = :password WHERE id = :id",
+//         params! {
+//             "password" => digest.0,
+//             "id" => &id
+//         },
+//     )?;
+//     conn.query_drop(format!(
+//         "INSERT INTO token (ty, id, tbn) VALUES (1, '{}', {}) ON DUPLICATE KEY UPDATE tbn = {}",
+//         id,
+//         time.naos(),
+//         time.naos()
+//     ))?;
+//     Ok(Response::empty())
+// }
 async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
@@ -106,57 +111,140 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     Ok(Response::empty())
 }
 pub fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
-    let u: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{id}' LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
+    println!(
+        "SELECT u.* FROM user u WHERE u.id = '{id}' 
+        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"
+    );
+    let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
+        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
     Ok(u)
 }
-async fn query_user_data(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    #[derive(serde::Deserialize)]
-    struct Data {
-        department: String,
-        whole: bool,
-    }
+macro_rules! __query_staff {
+    // 自动判断
+    ($conn:expr, $d:expr, $whole:expr) => {
+        {
+            let data = op::ternary!($d.eq("?") => __query_staff!($conn); __query_staff!($conn, $d => 2))?;
+            if !$whole {
+                Ok(Response::ok( json!({ "count": data.len() })))
+            } else {
+                let values = if $d.eq("?") {
+                    let mut map: HashMap<String, Vec<User>> = HashMap::new();
+                    for u in data {
+                        map.entry(u.department.clone()).or_default().push(u);
+                    }
+                    map.into_iter().map(|(k, v)| json!({ "department": k, "data": v})).collect()
+                } else {
+                    vec![json!({ "department": $d, "data": data})]
+                };
+                Ok(Response::ok( json!(values)))
+            }
+        }
+    };
+    // 已部门为单位查询
+    ($conn:expr, $d:expr => 2) => {
+        {
+            __query($conn, &format!("department = '{}'", $d), false)
+        }
+    };
+    ($conn:expr) => {
+        {
+            __query($conn, &"id > ''", false)
+        }
+    };
+}
+fn __query(conn: &mut PooledConn, filter: &str, limit: bool) -> mysql::Result<Vec<User>> {
+    conn.query_map(
+        format!(
+            "SELECT * FROM user WHERE ({filter}) AND NOT EXISTS (SELECT 1 FROM leaver l
+         WHERE l.id=user.id) {}",
+            ternary!(limit => "LIMIT 1"; "")
+        ),
+        |u| u,
+    )
+}
+
+#[derive(serde::Deserialize)]
+struct QueryParamsList {
+    department: String,
+    whole: bool,
+}
+async fn query_staff(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let data: Data = serde_json::from_value(value)?;
+    let params: QueryParamsList = serde_json::from_value(value)?;
     let u = get_user(&id, &mut conn)?;
     let perm = verify_permissions(&u.role, "other", OtherGroup::COMPANY_STAFF_DATA, None).await;
-    let d = ternary!(data.department.is_empty() =>
+    let d = ternary!(params.department.is_empty() =>
         ternary!(perm => "?"; return Err(Response::permission_denied()));
-        ternary!(perm || data.department == u.department => &data.department; return Err(Response::permission_denied()))
+        ternary!(perm || params.department == u.department => &params.department; return Err(Response::permission_denied()))
     );
-
-    if !data.whole {
-        let count = conn.query_map(
-            format!(
-                "SELECT id FROM user {}",
-                ternary!(d.eq("?") => "".into(); format!("WHERE department = '{d}'"))
-            ),
-            |s: String| s,
-        )?;
-
-        Ok(Response::ok(json!({"count": count.len()})))
-    } else {
-        let mut infos = Vec::new();
-        if d.eq("?") {
-            let departs = conn.query_map("SELECT value FROM department", |s: String| s)?;
-            for d in departs {
-                infos.push(query_user_data_by(&d, &id, &mut conn)?)
-            }
-        } else {
-            infos.push(query_user_data_by(d, &id, &mut conn)?);
-        }
-        Ok(Response::ok(json!(infos)))
-    }
+    __query_staff!(&mut conn, d, params.whole)
 }
 
-fn query_user_data_by(d: &str, id: &str, conn: &mut PooledConn) -> mysql::Result<Value> {
-    let data = conn.query_map(
-        format!("SELECT * FROM user WHERE department = '{d}' AND id != '{id}'"),
-        |user: User| user,
-    )?;
-    Ok(json!({
-        "department": d,
-        "data": data
-    }))
+async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let u = get_user(&id, &mut conn)?;
+    let count: Option<u32> = match depart.as_str() {
+        "all" => conn.query_first(
+            "SELECT COUNT(u.id) FROM user u WHERE NOT EXISTS 
+                (SELECT 1 FROM leaver l WHERE l.id=u.id) GROUP BY u.id",
+        )?,
+        _ => conn.query_first(format!(
+            "SELECT COUNT(u.id) FROM user u WHERE u.department='{}' AND NOT EXISTS 
+                (SELECT 1 FROM leaver l WHERE l.id=u.id) GROUP BY u.id",
+            op::ternary!(depart.eq("my")
+            => &u.department; &depart)
+        ))?,
+    };
+    Ok(Response::ok(json!(count.unwrap_or(0))))
+}
+
+async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let u = get_user(&id, &mut conn)?;
+    let data: Vec<Value> = match depart.as_str() {
+        "all" => {
+            if !verify_permissions(&u.role, "other", "company_staff_data", None).await {
+                return Err(Response::permission_denied());
+            }
+            let users: Vec<User> = conn.query(
+                "SELECT u.* FROM user u WHERE NOT EXISTS 
+                   (SELECT 1 FROM leaver l WHERE l.id=u.id)",
+            )?;
+            let mut map: HashMap<String, Vec<User>> = HashMap::new();
+            for u in users {
+                map.entry(u.department.clone()).or_default().push(u);
+            }
+            map.into_iter()
+                .map(|(k, v)| {
+                    json!({
+                        "department": k,
+                        "data": v
+                    })
+                })
+                .collect()
+        }
+        _ => {
+            if !depart.eq("my")
+                && !verify_permissions(&u.role, "other", "company_staff_data", None).await
+            {
+                return Err(Response::permission_denied());
+            }
+            let d = op::ternary!(depart.eq("my") => &u.department; &depart);
+            let users: Vec<User> = conn.query(format!(
+                "SELECT u.* FROM user u WHERE u.department='{d}' AND NOT EXISTS 
+                    (SELECT 1 FROM leaver l WHERE l.id=u.id)"
+            ))?;
+            vec![json!({
+                "department": d,
+                "data": users
+            })]
+        }
+    };
+    Ok(Response::ok(json!(data)))
 }

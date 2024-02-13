@@ -124,6 +124,11 @@ impl Table {
             PRIMARY KEY(ty, id)
         )
     ";
+    /// 黑名单设置，用于禁止离职员工登录
+    pub const BLACKLIST: &str = "CREATE TABLE IF NOT EXISTS blacklist(
+        id VARCHAR(15),
+        PRIMARY KEY (id)
+    )";
     /// 产品表
     /// num 编号
     /// cover 封面的地址

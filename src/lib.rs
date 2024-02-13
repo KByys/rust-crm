@@ -32,7 +32,7 @@ pub fn get_value<'a>(value: &'a serde_json::Value, index: &str) -> Option<&'a st
 }
 
 #[derive(serde::Serialize, FromRow, Debug, serde::Deserialize, Clone)]
-pub struct TextInfos {
+pub struct Field {
     pub display: String,
     pub value: String,
 }

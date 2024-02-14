@@ -8,6 +8,7 @@ use chrono::prelude::{DateTime, Local, TimeZone};
 pub enum TimeFormat {
     /// 年-月-日, YYYY-MM-DD
     YYYYMMDD,
+    HHMM,
     /// 时-分-秒, HH:MM:SS
     HHMMSS,
     /// 年-月-日 时:分, YYYY-MM-DD HH:MM
@@ -66,8 +67,12 @@ impl TIME {
     }
     pub fn format(&self, fmt: TimeFormat) -> String {
         match fmt {
-            TimeFormat::HHMMSS => format!("{:0>2}:{:0>2}:{:0>2}", self.hour, self.minute, self.second),
-            TimeFormat::YYYYMMDD => format!("{:0>4}-{:0>2}-{:0>2}", self.year, self.month, self.day),
+            TimeFormat::HHMMSS => {
+                format!("{:0>2}:{:0>2}:{:0>2}", self.hour, self.minute, self.second)
+            }
+            TimeFormat::YYYYMMDD => {
+                format!("{:0>4}-{:0>2}-{:0>2}", self.year, self.month, self.day)
+            }
             TimeFormat::YYYYMMDD_HHMM => format!(
                 "{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}",
                 self.year, self.month, self.day, self.hour, self.minute
@@ -76,6 +81,9 @@ impl TIME {
                 "{:0>4}-{:0>2}-{:0>2} {:0>2}:{:0>2}:{:0>2}",
                 self.year, self.month, self.day, self.hour, self.minute, self.second
             ),
+            TimeFormat::HHMM => {
+                format!("{:0>2}:{:0>2}", self.hour, self.minute)
+            }
         }
     }
     pub fn naos(&self) -> u128 {

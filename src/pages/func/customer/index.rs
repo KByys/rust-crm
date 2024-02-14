@@ -425,7 +425,8 @@ macro_rules! __convert {
             2 => {
                 let t = op::some!($local.checked_add_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));
-                format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment <= '{} 24:00')",
+                let n = $time.format(TimeFormat::HHMM);
+                format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment <= '{} {n}')",
                     $time.format(TimeFormat::YYYYMMDD), TIME::from(t).format(TimeFormat::YYYYMMDD))
             }
             _ => return Err(Response::invalid_value("ap错误"))

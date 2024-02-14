@@ -416,18 +416,18 @@ macro_rules! __convert {
     };
     ($param:expr, $time:expr, $local:expr => appointment) => {
         match $param.ap {
-            0 => "a.appointment IS NOT NULL || a.appointment IS NULL".to_string(),
+            0 => (0 , "".into()),
             1 => {
                 let t = op::some!($local.checked_sub_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));
-                    format!("a.finish_time >= '{}'", TIME::from(t).format(TimeFormat::YYYYMMDD))
+                   (1, format!("a.finish_time >= '{}'", TIME::from(t).format(TimeFormat::YYYYMMDD)))
             }
             2 => {
                 let t = op::some!($local.checked_add_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));
                 let n = $time.format(TimeFormat::HHMM);
-                format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment >= '{} {n}')",
-                    $time.format(TimeFormat::YYYYMMDD), TIME::from(t).format(TimeFormat::YYYYMMDD))
+               (1, format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment >= '{} {n}')",
+                    $time.format(TimeFormat::YYYYMMDD), TIME::from(t).format(TimeFormat::YYYYMMDD)))
             }
             _ => return Err(Response::invalid_value("ap错误"))
         }
@@ -472,9 +472,13 @@ async fn __query_customer_list_data(
     let ty = __convert!(params.ty);
     let time = TIME::now()?;
     let local = chrono::Local.timestamp_nanos(time.naos() as i64);
-    let appoint = __convert!(&params, &time, local => appointment);
+    let (ot, appoint) = __convert!(&params, &time, local => appointment);
     let added_time = __convert!(time, params.added_days, local, "ex.added_date");
-
+    let ap = if ot ==  0 {
+        String::new()
+    } else {
+        format!("JOIN appointment a ON a.customer=c.id AND a.salesman=ex.salesman AND ({appoint})")
+    };
     let u = get_user(id, conn)?;
 
     let (salesman, department) =
@@ -488,7 +492,7 @@ async fn __query_customer_list_data(
         FROM customer c JOIN extra_customer_data ex ON ex.id=c.id AND (ex.salesman {salesman}) 
         AND (ex.added_date {added_time})
         JOIN user u ON u.id=ex.salesman AND (u.department {department}) 
-        JOIN appointment a ON a.customer=c.id AND a.salesman=ex.salesman AND ({appoint})
+        {ap}
         LEFT JOIN appointment app ON app.customer=c.id AND app.salesman=ex.salesman AND app.appointment>'{today}' AND app.finish_time IS NULL
         LEFT JOIN appointment cou ON cou.customer=c.id AND cou.salesman=ex.salesman AND cou.finish_time IS NOT NULL
         WHERE (c.status {status}) AND (c.ty {ty})

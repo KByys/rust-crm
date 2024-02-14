@@ -191,28 +191,17 @@ fn __insert_customer(conn: &mut PooledConn, table: &InsertParams) -> Result<(), 
                     "level" => &table.level
                 }
             ) => dup)?;
-    conn.exec_drop("INSERT INTO extra_customer_data (id, salesman, last_visited_time, visited_count, last_transaction_time,
-        push_to_sea_date, pop_from_sea_date, added_date) VALUES (:id, :salesman, :last_visited_time, :visited_count, :last_transaction_time,
+    conn.exec_drop("INSERT INTO extra_customer_data (id, salesman, last_transaction_time,
+        push_to_sea_date, pop_from_sea_date, added_date) VALUES (:id, :salesman, :last_transaction_time,
         :push_to_sea_date, :pop_from_sea_date, :added_date) ", params! {
         "id" => &id,
         "salesman" => &table.salesman,
-        "last_visited_time" => mysql::Value::NULL,
-        "visited_count" => 0,
         "last_transaction_time" => mysql::Value::NULL,
         "push_to_sea_date" => mysql::Value::NULL,
         "pop_from_sea_date" => mysql::Value::NULL,
         "added_date" => time.format(TimeFormat::YYYYMMDD)
     })?;
-    // todo: next visit time
 
-    // conn.exec_drop(format!("INSERT INTO appointment"), params! {
-    //     "applicant" => applicant,
-    //     "salesman" => &table.salesman,
-    //     "customer" => &id,
-    //     "appointment" => &table.next_visit_time,
-    //     "finish_time" => mysql::Value::NULL,
-    //     "theme" => &
-    // })?;
     crate::pages::func::__insert_custom_fields(conn, &table.custom_fields, 0, &id)?;
     Ok(())
 }

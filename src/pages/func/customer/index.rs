@@ -416,7 +416,7 @@ macro_rules! __convert {
     };
     ($param:expr, $time:expr, $local:expr => appointment) => {
         match $param.ap {
-            0 => "a.appointment IS NOT NULL".to_string(),
+            0 => "a.appointment IS NOT NULL || a.appointment IS NULL".to_string(),
             1 => {
                 let t = op::some!($local.checked_sub_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));

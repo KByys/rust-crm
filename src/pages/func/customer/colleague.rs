@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use crate::{
     bearer,
     database::get_conn,
-    libs::{gen_id, time::TIME},
+    libs::{gen_id, time::TIME, TimeFormat},
     parse_jwt_macro, Response, ResponseResult,
 };
 
@@ -45,9 +45,9 @@ async fn insert_colleague(
     let time = TIME::now()?;
     params.id = gen_id(&time, &params.name);
     conn.query_drop(format!(
-        "INSERT INTO customer_colleague (id, customer, phone, name) VALUES (
-        '{}', '{}', '{}', '{}')",
-        params.id, customer, params.phone, params.name
+        "INSERT INTO customer_colleague (id, customer, phone, name, create_time) VALUES (
+        '{}', '{}', '{}', '{}', '{}')",
+        params.id, customer, params.phone, params.name, time.format(TimeFormat::YYYYMMDD_HHMMSS)
     ))?;
     Ok(Response::empty())
 }
@@ -95,98 +95,8 @@ async fn delete_colleague(headers: HeaderMap, Path(id): Path<String>) -> Respons
 async fn query_colleagues(Path(customer): Path<String>) -> ResponseResult {
     let mut conn = get_conn()?;
     let data: Vec<Colleague> = conn.query(format!(
-        "SELECT id, name, phone FROM customer_colleague WHERE customer='{}'",
+        "SELECT id, name, phone FROM customer_colleague WHERE customer='{}' ORDER BY create_time",
         customer
     ))?;
     Ok(Response::ok(json!(data)))
 }
-// #[derive(serde::Deserialize, serde::Serialize, FromRow, Debug)]
-// struct ColleagueInfos {
-//     customer_id: String,
-//     #[serde(default)]
-//     id: String,
-//     #[serde(default)]
-//     phone: String,
-//     #[serde(default)]
-//     name: String,
-// }
-
-// macro_rules! verify {
-//     ($headers:expr, $value:expr) => {
-//         {
-//             let bearer = bearer!($headers);
-//             let mut conn = get_conn()?;
-//             let id = parse_jwt_macro!(&bearer, &mut conn => true);
-//             let data: ColleagueInfos = serde_json::from_value($value)?;
-//             let Some::<String>(salesman) = conn.query_first(format!("SELECT salesman FROM customer WHERE id = '{}'", data.customer_id))? else {
-//                 return Err(Response::not_exist("该客户不存在"));
-//             };
-//             if salesman != id {
-//                 return Err(Response::permission_denied());
-//             }
-//             (id, data, conn)
-//         }
-//     };
-// }
-
-// async fn add_colleague(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
-//     let (_id, data, mut conn) = verify!(&headers, value);
-//     if data.name.is_empty() || data.phone.is_empty() {
-//         return Err(Response::invalid_value("phone或name不能为空字符串"));
-//     }
-//     let time = TIME::now()?;
-//     let id = gen_id(&time, &data.name);
-//     conn.query_drop(format!(
-//         "INSERT INTO customer_colleague (customer_id, id, phone, name) VALUES ('{}', '{}', '{}', '{}')",
-//         data.customer_id, id, data.phone, data.name
-//     ))?;
-//     Ok(Response::empty())
-// }
-
-// async fn update_colleague(
-//     headers: HeaderMap,
-//     Json(value): Json<serde_json::Value>,
-// ) -> ResponseResult {
-//     let (_id, data, mut conn) = verify!(&headers, value);
-//     if data.name.is_empty() || data.phone.is_empty() {
-//         return Err(Response::invalid_value("phone或name不能为空字符串"));
-//     }
-//     println!("{:?}", data);
-//     let sta = format!(
-//         "UPDATE customer_colleague SET phone = '{}', name = '{}' WHERE id = '{}' LIMIT 1",
-//         data.phone, data.name, data.id
-//     );
-//     println!("{}", sta);
-//     conn.query_drop(format!(
-//         "UPDATE customer_colleague SET phone = '{}', name = '{}' WHERE id = '{}' LIMIT 1",
-//         data.phone, data.name, data.id
-//     ))?;
-//     Ok(Response::empty())
-// }
-
-// async fn delete_colleague(
-//     headers: HeaderMap,
-//     Json(value): Json<serde_json::Value>,
-// ) -> ResponseResult {
-//     let (_id, data, mut conn) = verify!(&headers, value);
-//     conn.query_drop(format!(
-//         "DELETE FROM customer_colleague WHERE id = '{}' LIMIT 1",
-//         data.id
-//     ))?;
-//     Ok(Response::empty())
-// }
-
-// async fn query_colleagues(Json(value): Json<serde_json::Value>) -> ResponseResult {
-//     let Some(id) = crate::get_value(&value, "customer_id") else {
-//         return Err(Response::invalid_format("缺失 customer_id"));
-//     };
-//     let mut conn = get_conn()?;
-//     let data: Vec<ColleagueInfos> = conn.query_map(
-//         format!(
-//             "SELECT customer_id, id, phone, name FROM customer_colleague WHERE customer_id = '{}'",
-//             id
-//         ),
-//         |c| c,
-//     )?;
-//     Ok(Response::ok(json!(data)))
-// }

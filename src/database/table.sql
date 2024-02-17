@@ -62,7 +62,6 @@ CREATE TABLE IF NOT EXISTS custom_field_option (
     PRIMARY KEY (ty, display, value)
 );
 
-
 -- 角色表
 CREATE TABLE IF NOT EXISTS roles (
     id VARCHAR(50) NOT NULL,
@@ -95,6 +94,7 @@ CREATE TABLE IF NOT EXISTS leaver (
     id VARCHAR(150) NOT NULL,
     PRIMARY KEY (id)
 );
+
 -- 客户表
 CREATE TABLE IF NOT EXISTS customer (
     id VARCHAR(150) NOT NULL,
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS customer (
     ty VARCHAR(30),
     -- 客户标签
     tag VARCHAR(30),
-    PRIMARY KEY (id) 
+    PRIMARY KEY (id)
 );
 
 CREATE TABLE IF NOT EXISTS extra_customer_data (
@@ -144,13 +144,12 @@ CREATE TABLE IF NOT EXISTS extra_customer_data (
     FOREIGN KEY (salesman) REFERENCES user(id)
 );
 
-
-
 CREATE TABLE IF NOT EXISTS customer_colleague(
     id VARCHAR(150) NOT NULL,
     customer VARCHAR(150) NOT NULL,
     phone VARCHAR(15) NOT NULL,
     name VARCHAR(10) NOT NULL,
+    create_time VARCHAR(25),
     PRIMARY KEY(id),
     FOREIGN KEY (customer) REFERENCES customer(id)
 );
@@ -184,7 +183,6 @@ CREATE TABLE IF NOT EXISTS token(
     tbn BIGINT NULL,
     PRIMARY KEY(ty, id)
 );
-
 
 -- 产品表
 -- num 编号

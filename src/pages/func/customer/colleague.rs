@@ -17,10 +17,13 @@ use crate::{
 
 pub fn colleague_router() -> Router {
     Router::new()
-    .route("/customer/colleague/data/:customer", get(query_colleagues))
-    .route("/customer/colleague/insert/:customer", post(insert_colleague))
-    .route("/customer/colleague/update", post(update_colleague))
-    .route("/customer/colleague/delete/:id", delete(delete_colleague))
+        .route("/customer/colleague/data/:customer", get(query_colleagues))
+        .route(
+            "/customer/colleague/insert/:customer",
+            post(insert_colleague),
+        )
+        .route("/customer/colleague/update", post(update_colleague))
+        .route("/customer/colleague/delete/:id", delete(delete_colleague))
 }
 
 #[derive(serde::Deserialize, serde::Serialize, FromRow, Debug)]
@@ -47,9 +50,13 @@ async fn insert_colleague(
     conn.query_drop(format!(
         "INSERT INTO customer_colleague (id, customer, phone, name, create_time) VALUES (
         '{}', '{}', '{}', '{}', '{}')",
-        params.id, customer, params.phone, params.name, time.format(TimeFormat::YYYYMMDD_HHMMSS)
+        params.id,
+        customer,
+        params.phone,
+        params.name,
+        time.format(TimeFormat::YYYYMMDD_HHMMSS)
     ))?;
-    Ok(Response::empty())
+    Ok(Response::ok(json!(params.id)))
 }
 
 async fn update_colleague(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {

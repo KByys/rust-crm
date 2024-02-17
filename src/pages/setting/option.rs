@@ -110,12 +110,12 @@ pub async fn insert_options(headers: HeaderMap, Json(value): Json<Value>) -> Res
     ))?;
     unsafe {
         if let Some(k) = level_key {
-            // op::some!(DROP_DOWN_BOX.map_mut().get_mut("customer_level"); 
+            // op::some!(DROP_DOWN_BOX.map_mut().get_mut("customer_level");
             //             ret Err(Response::unknown_err("错误代码：1000")))
             // .remove_entry(&k);
-            conn.query_drop(
-                format!("DELETE FROM drop_down_box WHERE name='customer_level' AND value='{k}' LIMIT 1"),
-            )?;
+            conn.query_drop(format!(
+                "DELETE FROM drop_down_box WHERE name='customer_level' AND value='{k}' LIMIT 1"
+            ))?;
         }
         DROP_DOWN_BOX.init(&mut conn)?;
         // if !DROP_DOWN_BOX.contains(name, &value) {
@@ -125,7 +125,6 @@ pub async fn insert_options(headers: HeaderMap, Json(value): Json<Value>) -> Res
         //         .or_default()
         //         .insert(value, time.format(TimeFormat::YYYYMMDD_HHMMSS));
         // }
-
     }
     Ok(Response::empty())
 }
@@ -191,19 +190,19 @@ impl DropDownBox {
     }
 
     pub fn get(&self, name: &str) -> Vec<&str> {
-        self.map().get(name).map(|v| {
-            let mut values: Vec<(&str, &str)> = v.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-            if name.eq("customer_level") {
-                values.sort_by(|(k1, _), (k2, _)| {
-                    k1.chars().next().cmp(&k2.chars().next())
-                });
-            } else {
-                values.sort_by(|(_, v1), (_, v2)| {
-                    v1.cmp(v2)
-                })
-            }
-            values.into_iter().map(|(k, _)|k).collect()
-        }).unwrap_or_default()
+        self.map()
+            .get(name)
+            .map(|v| {
+                let mut values: Vec<(&str, &str)> =
+                    v.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                if name.eq("customer_level") {
+                    values.sort_by(|(k1, _), (k2, _)| k1.chars().next().cmp(&k2.chars().next()));
+                } else {
+                    values.sort_by(|(_, v1), (_, v2)| v1.cmp(v2))
+                }
+                values.into_iter().map(|(k, _)| k).collect()
+            })
+            .unwrap_or_default()
     }
     // pub fn update(&mut self, name: &str, old_value: &str, new_value: &str) {
     //     // for item in &mut self.inner {
@@ -261,7 +260,6 @@ impl From<&str> for Level {
                     level: ch,
                     value: value[1..].to_owned(),
                 };
-
             }
         }
         Level {
@@ -310,7 +308,11 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
     let name = *get_drop_down_box!(param.ty);
     let mut new_value = param.info.new_value.clone();
     unsafe {
-        if DROP_DOWN_BOX.map().get(name).is_some_and(|m|m.contains_key(&new_value)) {
+        if DROP_DOWN_BOX
+            .map()
+            .get(name)
+            .is_some_and(|m| m.contains_key(&new_value))
+        {
             return Err(Response::already_exist("修改的数据不能重复"));
         }
     }
@@ -357,7 +359,10 @@ pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -
     }
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
     c_or_r(_delete, &mut conn, &info, false)?;
-    unsafe { DROP_DOWN_BOX.remove(name, &info.info.value) }
+    unsafe {
+        DROP_DOWN_BOX.remove(name, &info.info.value);
+        println!("{:#?}", DROP_DOWN_BOX);
+    }
     Ok(Response::empty())
 }
 fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
@@ -368,11 +373,15 @@ fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
             param.info.next_value, param.info.delete_value
         ))?;
     }
-
+    println!(
+        "DELETE FROM drop_down_box WHERE name = '{}' AND value = '{}' LIMIT 1",
+        name, param.info.delete_value
+    );
     conn.query_drop(format!(
         "DELETE FROM drop_down_box WHERE name = '{}' AND value = '{}' LIMIT 1",
         name, param.info.delete_value
     ))?;
+
     Ok(())
 }
 
@@ -402,9 +411,7 @@ pub async fn query_option_value() -> ResponseResult {
 
 pub async fn query_specific_info(Path(ty): Path<usize>) -> ResponseResult {
     let name = *get_drop_down_box!(ty);
-    let info:Vec<&str> = unsafe {
-        DROP_DOWN_BOX.get(name)
-    };
+    let info: Vec<&str> = unsafe { DROP_DOWN_BOX.get(name) };
     Ok(Response::ok(json!({
         "ty": ty,
         "info": info

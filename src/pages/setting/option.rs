@@ -242,6 +242,7 @@ impl std::fmt::Display for Level {
 }
 impl From<&str> for Level {
     fn from(value: &str) -> Self {
+        let value = value.trim();
         let sp: Vec<_> = value.splitn(2, '-').collect();
         if sp.len() == 2 {
             let upper = sp[0].trim().to_uppercase();
@@ -250,8 +251,17 @@ impl From<&str> for Level {
             if ch.is_ascii_uppercase() {
                 return Level {
                     level: ch,
-                    value: sp[1].trim().to_string(),
+                    value: sp[1].to_string(),
                 };
+            }
+        } else {
+            let ch = value.chars().next().unwrap_or(' ').to_ascii_uppercase();
+            if ch.is_ascii_uppercase() {
+                return Level {
+                    level: ch,
+                    value: value[1..].to_owned(),
+                };
+
             }
         }
         Level {

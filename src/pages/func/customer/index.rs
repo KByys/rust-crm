@@ -26,8 +26,8 @@ pub fn customer_router() -> Router {
 }
 
 use crate::libs::dser::{
-    deser_empty_to_none, deser_yyyy_mm_dd_hh_mm, deserialize_bool_to_i32, deserialize_mm_dd,
-    op_deser_yyyy_mm_dd_hh_mm, serialize_i32_to_bool, serialize_null_to_default,
+    deser_empty_to_none, deserialize_bool_to_i32, deserialize_mm_dd, serialize_i32_to_bool,
+    serialize_null_to_default,
 };
 
 // pub static mut STATIC_CUSTOMER_LEVEL: CustomerLevel = CustomerLevel::new();
@@ -474,7 +474,7 @@ async fn __query_customer_list_data(
     let local = chrono::Local.timestamp_nanos(time.naos() as i64);
     let (ot, appoint) = __convert!(&params, &time, local => appointment);
     let added_time = __convert!(time, params.added_days, local, "ex.added_date");
-    let ap = if ot ==  0 {
+    let ap = if ot == 0 {
         String::new()
     } else {
         format!("JOIN appointment a ON a.customer=c.id AND a.salesman=ex.salesman AND ({appoint})")

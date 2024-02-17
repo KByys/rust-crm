@@ -360,7 +360,7 @@ pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -
     conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
     c_or_r(_delete, &mut conn, &info, false)?;
     unsafe {
-        DROP_DOWN_BOX.remove(name, &info.info.value);
+        DROP_DOWN_BOX.init(&mut conn)?;
         println!("{:#?}", DROP_DOWN_BOX);
     }
     Ok(Response::empty())

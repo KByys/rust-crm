@@ -1,3 +1,4 @@
+mod user;
 use axum::Router;
 
 mod account;
@@ -15,4 +16,5 @@ pub fn pages_router() -> Router {
         .merge(setting::setting_router())
         .merge(message::message_router())
         .merge(func::func_router())
+        .merge(user::user_router())
 }

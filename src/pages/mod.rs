@@ -7,7 +7,7 @@ pub mod func;
 mod message;
 mod setting;
 pub use setting::{
-    option::{DropDownBox, DROP_DOWN_BOX, DROP_DOWN_BOX_ALL},
+    option::*,
     CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS
 };
 

@@ -13,7 +13,7 @@ use crate::{
     libs::{gen_id, TimeFormat, TIME},
     pages::account::get_user,
     parse_jwt_macro,
-    perm::verify_permissions,
+    perm::{action::CustomerGroup, verify_permissions},
     Field, Response, ResponseResult,
 };
 
@@ -253,7 +253,7 @@ async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
         "添加客户，{}-{} : {:#?}",
         user.name, user.smartphone, params
     );
-    if !verify_permissions(&user.role, "customer", "enter_customer_data", None).await {
+    if !verify_permissions(&user.role, "customer", CustomerGroup::ENTER_CUSTOMER_DATA, None).await {
         return Err(Response::permission_denied());
     }
     c_or_r(__insert_customer, &mut conn, &params, false)?;

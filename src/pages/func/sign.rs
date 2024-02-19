@@ -105,7 +105,7 @@ fn _insert(
     files: &[(&FilePart, String)],
 ) -> Result<(), Response> {
     conn.exec_drop(
-        "INSERT INTO sgin (id, signer, customer, address, sign_time, file, content)
+        "INSERT INTO sign (id, signer, customer, address, sign_time, file, content)
         VALUES (:id, :signer, :customer, :address, :sign_time, :file, :content)",
         params! {
             "id" => &data.id,
@@ -119,7 +119,7 @@ fn _insert(
         },
     )?;
     for (f, path) in files {
-        std::fs::write(format!("resourses/sign/{path}"), &f.bytes)?;
+        std::fs::write(format!("resources/sign/{path}"), &f.bytes)?;
     }
     Ok(())
 }

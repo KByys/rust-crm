@@ -14,12 +14,12 @@ where
     let value: bool = Deserialize::deserialize(de)?;
     Ok(op::ternary!(value => 0; 1))
 }
-pub fn deser_empty_to_none<'de, D>(de: D) -> Result<Option<String>, D::Error> 
-    where D: Deserializer<'de>
+pub fn deser_empty_to_none<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
 {
     let value: Option<String> = Deserialize::deserialize(de)?;
-        Ok(value.and_then(|s|op::ternary!(s.is_empty() => None; Some(s))))
-
+    Ok(value.and_then(|s| op::ternary!(s.is_empty() => None; Some(s))))
 }
 pub fn serialize_i32_to_bool<T, S>(value: &T, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -122,5 +122,6 @@ where
         r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})",
         de,
         "YYYY-MM-DD HH:MM",
-    ).map(|s| op::ternary!(s.is_empty() => None; Some(s)))
+    )
+    .map(|s| op::ternary!(s.is_empty() => None; Some(s)))
 }

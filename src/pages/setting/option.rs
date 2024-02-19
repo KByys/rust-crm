@@ -14,6 +14,16 @@ use crate::{
     ResponseResult,
 };
 
+pub fn check_drop_down_box(key: &str, value: &str) -> Option<bool> {
+    unsafe {
+        if value.is_empty() {
+            return None;
+        }
+        DROP_DOWN_BOX.map().get(key).map(|v| v.contains_key(value))
+    }
+}
+
+
 pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
     "customer_type",
     "customer_status",
@@ -25,7 +35,7 @@ pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
     "visit_theme",
     "order_type",
     "sales_unit",
-    "store_house",
+    "storehouse",
     "product_type",
     "product_unit",
     "payment",

@@ -4,7 +4,8 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
-pub use custom::{STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS, Field, CustomFields};
+pub use custom::{CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS};
+pub use option::check_drop_down_box;
 // pub use option::DataOptions;
 pub fn setting_router() -> Router {
     Router::new()

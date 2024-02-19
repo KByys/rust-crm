@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use axum::Router;
 use mysql::prelude::Queryable;
 
+use crate::pages::STATIC_CUSTOM_FIELDS;
+
 mod customer;
 
 pub fn func_router() -> Router {
@@ -29,11 +31,14 @@ pub fn __insert_custom_fields(
     fields: &HashMap<String, Vec<crate::Field>>,
     ty: u8, id: &str
 ) -> Result<(), crate::Response> {
-    let (texts, times, boxes) = unsafe { crate::pages::STATIC_CUSTOM_FIELDS.get_fields(0) };
+    let (texts, times, boxes) = unsafe { 
+        println!("{:#?}", STATIC_CUSTOM_FIELDS);
+        crate::pages::STATIC_CUSTOM_FIELDS.get_fields(0) };
 
     let map: HashMap<&str, Vec<&str>> = [("texts", texts), ("times", times), ("boxes", boxes)]
         .into_iter()
         .collect();
+    println!("{:#?}", map);
     for (k, v) in &map {
         if let Some(d) = fields.get(*k) {
             if !verify_custom_fields(v, d) {

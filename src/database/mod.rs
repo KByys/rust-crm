@@ -50,6 +50,7 @@ pub fn c_or_r<F, T>(
 where
     F: Fn(&mut PooledConn, T) -> Result<(), Response>,
 {
+    conn.query_drop("BEGIN")?;
     let result = match f(conn, param) {
         Ok(_) => {
             conn.query_drop("COMMIT")?;

@@ -26,37 +26,6 @@ pub struct CustomInfos {
     #[serde(default)]
     new_value: String,
 }
-/// 自定义字段
-// pub const CUSTOM_FIELDS: [[&str; 3]; 2] = [
-//     [
-//         "customize_customer_text",
-//         "customize_customer_time",
-//         "customize_customer_box",
-//     ],
-//     [
-//         "customize_product_text",
-//         "customize_product_time",
-//         "customize_product_box",
-//     ],
-// ];
-// /// 自定义字段的下拉框选项
-// pub const CUSTOM_BOX_FIELDS: [&str; 2] = [
-//     "customize_customer_box_option",
-//     "customize_product_box_option",
-// ];
-// /// 客户和产品的自定义字段的值
-// pub const CUSTOM_FIELD_INFOS: [[&str; 3]; 2] = [
-//     [
-//         "customize_customer_text_infos",
-//         "customize_customer_time_infos",
-//         "customize_customer_box_infos",
-//     ],
-//     [
-//         "customize_product_text_infos",
-//         "customize_product_time_infos",
-//         "customize_product_box_infos",
-//     ],
-// ];
 
 async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String, Response> {
     let bearer = bearer!(&headers);
@@ -69,28 +38,8 @@ async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String
         Err(Response::permission_denied())
     }
 }
-// #[derive(Clone, Copy)]
-// #[repr(usize)]
-// enum CustomizeFieldType {
-//     Text,
-//     Time,
-//     Box,
-// }
-// impl CustomizeFieldType {
-//     pub fn new(s: &str) -> Result<Self, Response> {
-//         match s {
-//             "0" => Ok(Self::Text),
-//             "1" => Ok(Self::Time),
-//             "2" => Ok(Self::Box),
-//             _ => Err(Response::invalid_value(format!(
-//                 "display的值 `{}`，非法",
-//                 s
-//             ))),
-//         }
-//     }
-// }
 
-#[derive(FromRow, serde::Serialize, Clone)]
+#[derive(FromRow, serde::Serialize, Clone, Debug)]
 pub struct Field {
     ty: usize,
     display: String,
@@ -107,6 +56,7 @@ impl Field {
 
 pub static mut STATIC_CUSTOM_FIELDS: CustomFields = CustomFields::new();
 pub static mut STATIC_CUSTOM_BOX_OPTIONS: CustomFields = CustomFields::new();
+#[derive(Debug)]
 pub struct CustomFields {
     fields: Vec<Field>,
 }

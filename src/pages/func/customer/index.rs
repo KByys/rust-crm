@@ -253,9 +253,11 @@ async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
         "添加客户，{}-{} : {:#?}",
         user.name, user.smartphone, params
     );
+    
     if !verify_permissions(&user.role, "customer", CustomerGroup::ENTER_CUSTOMER_DATA, None).await {
         return Err(Response::permission_denied());
     }
+    
     c_or_r(__insert_customer, &mut conn, &params, false)?;
     Ok(Response::empty())
 }

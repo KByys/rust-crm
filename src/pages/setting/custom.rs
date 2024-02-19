@@ -90,9 +90,8 @@ impl CustomFields {
             if data.ty == ty && data.display == display && data.value == value {
                 self.fields.remove(index);
                 break;
-            } else {
-                index += 1;
             }
+            index += 1;
         }
     }
     pub fn remove_display(&mut self, ty: usize, display: &str) {
@@ -120,6 +119,22 @@ impl CustomFields {
                 break;
             }
         }
+    }
+    pub fn get_displays(&self, ty: usize) -> (Vec<&str>, Vec<&str>, Vec<&str>) {
+        let mut texts = Vec::new();
+        let mut times = Vec::new();
+        let mut boxes = Vec::new();
+        for item in &self.fields {
+            if item.ty == ty {
+                match item.display.as_str() {
+                    "0" => texts.push(item.display.as_str()),
+                    "1" => times.push(item.display.as_str()),
+                    "2" => boxes.push(item.display.as_str()),
+                    _ => (),
+                }
+            }
+        }
+        (texts, times, boxes)
     }
     pub fn get_fields(&self, ty: usize) -> (Vec<&str>, Vec<&str>, Vec<&str>) {
         let mut texts = Vec::new();

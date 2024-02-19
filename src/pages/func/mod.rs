@@ -20,20 +20,21 @@ pub fn func_router() -> Router {
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {
-    ver.len() == data.len() && {
-        data.iter()
-            .all(|info| ver.iter().all(|v| info.display.eq(v)))
-    }
+    println!("ver is {:#?}", ver);
+    println!("data is {:#?}", data);
+    ver.len() == data.len() && { data.iter().all(|info| ver.iter().any(|v| info.display.eq(v))) }
 }
 
 pub fn __insert_custom_fields(
     conn: &mut mysql::PooledConn,
     fields: &HashMap<String, Vec<crate::Field>>,
-    ty: u8, id: &str
+    ty: u8,
+    id: &str,
 ) -> Result<(), crate::Response> {
-    let (texts, times, boxes) = unsafe { 
+    let (texts, times, boxes) = unsafe {
         println!("{:#?}", STATIC_CUSTOM_FIELDS);
-        crate::pages::STATIC_CUSTOM_FIELDS.get_fields(0) };
+        crate::pages::STATIC_CUSTOM_FIELDS.get_fields(0)
+    };
 
     let map: HashMap<&str, Vec<&str>> = [("texts", texts), ("times", times), ("boxes", boxes)]
         .into_iter()
@@ -52,12 +53,17 @@ pub fn __insert_custom_fields(
     for (k, v) in fields {
         let s = op::some!(get_ty(k); con);
         for field in v {
-            values.push_str(&format!("({ty}, {s}, '{id}', '{}', '{}'),",field.display, field.value ));
+            values.push_str(&format!(
+                "({ty}, {s}, '{id}', '{}', '{}'),",
+                field.display, field.value
+            ));
         }
     }
     values.pop();
     if !values.is_empty() {
-        conn.query_drop(format!("INSERT INTO custom_field_data (fields, ty, id, display, value) VALUES {values}"))?;
+        conn.query_drop(format!(
+            "INSERT INTO custom_field_data (fields, ty, id, display, value) VALUES {values}"
+        ))?;
     }
 
     Ok(())
@@ -68,6 +74,6 @@ fn get_ty(s: &str) -> Option<i32> {
         "texts" => Some(0),
         "times" => Some(1),
         "boxes" => Some(2),
-        _ => None 
+        _ => None,
     }
 }

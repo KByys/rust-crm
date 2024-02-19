@@ -1,7 +1,9 @@
 pub mod roles;
 use std::collections::HashMap;
 
-use crate::{bearer, database::get_conn, parse_jwt_macro, perm::roles::ROLE_TABLES, Response, ResponseResult};
+use crate::{
+    bearer, database::get_conn, parse_jwt_macro, perm::roles::ROLE_TABLES, Response, ResponseResult,
+};
 use axum::{http::HeaderMap, routing::post, Router};
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::json;
@@ -12,46 +14,7 @@ pub type PermissionMap = HashMap<String, Vec<String>>;
 // #[forbid(unused)]
 pub(crate) mod action;
 
-// pub async fn get_role_id(name: &str) -> Option<String> {
-//     let table = ROLE_TABLE.lock().await;
-//     table.get(name).map(|s|s.to_string())
-// }
-
-// fn role_table() -> HashMap<String, String> {
-//     let mut conn = get_conn().expect("初始化角色映射表时连接数据库失败");
-//     conn.query_map("SELECT id, name FROM roles", |(id, name)| (id, name))
-//         .expect("查询失败")
-//         .into_iter()
-//         .collect()
-// }
-// fn role_table_name() -> HashMap<String, String> {
-//     let mut conn = get_conn().expect("初始化角色映射表时连接数据库失败");
-//     conn.query_map("SELECT id, name FROM roles", |(id, name)| (name, id))
-//         .expect("查询失败")
-//         .into_iter()
-//         .collect()
-// }
-
-
-// pub fn init_role_table() {
-
-//     let mut conn = get_conn().expect("初始化角色映射表时连接数据库失败");
-//     // let map = conn.query_map("SELECT id, name FROM roles", |(id, name)| (name, id))
-//     //     .expect("查询失败");
-// }
-
-
-
 lazy_static::lazy_static! {
-    // /// id -> name
-    // pub static ref ROLE_TABLE: Mutex<HashMap<String, String>> = {
-    //     Mutex::new(role_table())
-    // };
-
-    // /// name -> id
-    // pub static ref ROLE_NAME_TABLE: Mutex<HashMap<String, String>> = {
-    //     Mutex::new(role_table_name())
-    // };
     pub static ref ROLES_GROUP_MAP: Mutex<HashMap<String, PermissionGroupMap>> = {
         let map = if let Ok(bytes) = std::fs::read("data/perm") {
             serde_json::from_slice(&bytes).expect("权限文件结构遭到破坏，请联系开发人员进行修复")
@@ -107,8 +70,14 @@ unsafe fn role_adm() -> PermissionGroupMap {
     );
     map.insert("account".to_owned(), {
         let mut map = HashMap::new();
-        map.insert(AccountGroup::CREATE.to_owned(), vec![ROLE_TABLES.get_name_uncheck("salesman")]);
-        map.insert(AccountGroup::DELETE.to_owned(), vec![ROLE_TABLES.get_name_uncheck("salesman")]);
+        map.insert(
+            AccountGroup::CREATE.to_owned(),
+            vec![ROLE_TABLES.get_name_uncheck("salesman")],
+        );
+        map.insert(
+            AccountGroup::DELETE.to_owned(),
+            vec![ROLE_TABLES.get_name_uncheck("salesman")],
+        );
         map
     });
     map.insert("approval".to_owned(), {
@@ -120,7 +89,7 @@ unsafe fn role_adm() -> PermissionGroupMap {
     });
     map.insert("other".into(), {
         let mut map = HashMap::new();
-        map.insert(OtherGroup::QUERT_CHECK_IN.to_owned(), vec![]);
+        map.insert(OtherGroup::QUERY_CHECK_IN.to_owned(), vec![]);
 
         map
     });
@@ -163,9 +132,6 @@ pub async fn verify_permissions(
             data.map_or(true, |d| d.iter().all(|k| v.contains(&k.to_string())))
         })
 }
-
-
-
 
 async fn get_perm(headers: HeaderMap) -> ResponseResult {
     let mut conn = get_conn()?;

@@ -83,7 +83,7 @@ pub struct CustomerGroup;
 impl CustomerGroup {
     pub const ACTIVATION: &str = "activation";
     pub const QUERY: &str = "query";
-    pub const ENTER_CUSTOMER_DATA: &str = "enter_cutomer_data";
+    pub const ENTER_CUSTOMER_DATA: &str = "enter_customer_data";
     pub const UPDATE_CUSTOMER_DATA: &str = "update_customer_data";
     pub const DELETE_CUSTOMER_DATA: &str = "delete_customer_data";
     /// 查看不属于任何部门的公海客户信息
@@ -109,10 +109,7 @@ impl StorehouseGroup {
 }
 
 #[forbid(unused)]
-pub static PURCHASE: [&str; 2] = [
-    PurchaseGroup::ACTIVATION,
-    PurchaseGroup::QUERY
-];
+pub static PURCHASE: [&str; 2] = [PurchaseGroup::ACTIVATION, PurchaseGroup::QUERY];
 pub struct PurchaseGroup;
 
 impl PurchaseGroup {
@@ -121,10 +118,7 @@ impl PurchaseGroup {
 }
 
 #[forbid(unused)]
-pub static FINANCE: [&str; 2] = [
-    FinanceGroup::ACTIVATION,
-    FinanceGroup::QUERY
-];
+pub static FINANCE: [&str; 2] = [FinanceGroup::ACTIVATION, FinanceGroup::QUERY];
 pub struct FinanceGroup;
 
 impl FinanceGroup {
@@ -150,7 +144,7 @@ impl FormGroup {
 
 #[forbid(unused)]
 pub static OTHER_GROUP: [&str; 5] = [
-    OtherGroup::QUERT_CHECK_IN,
+    OtherGroup::QUERY_CHECK_IN,
     OtherGroup::CUSTOM_FIELD,
     OtherGroup::DROP_DOWN_BOX,
     OtherGroup::SEA_RULE,
@@ -159,7 +153,7 @@ pub static OTHER_GROUP: [&str; 5] = [
 pub struct OtherGroup;
 
 impl OtherGroup {
-    pub const QUERT_CHECK_IN: &str = "query_sign_in";
+    pub const QUERY_CHECK_IN: &str = "query_sign_in";
     pub const CUSTOM_FIELD: &str = "custom_field";
     pub const DROP_DOWN_BOX: &str = "drop_down_box";
     pub const SEA_RULE: &str = "sea_rule";

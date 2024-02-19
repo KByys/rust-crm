@@ -321,7 +321,6 @@ struct FullCustomerData {
     #[serde(serialize_with = "serialize_null_to_default")]
     pub last_transaction_time: Option<String>,
     pub custom_fields: CustomCustomerData,
-    colleagues: CustomerColleagues,
 }
 fn __query_full_data(
     conn: &mut PooledConn,
@@ -348,11 +347,6 @@ fn __query_full_data(
 
     let mut data: Option<FullCustomerData> = conn.query_first(query)?;
     if let Some(d) = &mut data {
-        d.colleagues.inner = conn.query(format!(
-            "SELECT id, name, phone FROM customer_colleague WHERE customer = '{}'",
-            d.id
-        ))?;
-
         let fields = conn.query::<(String, String, String), String>(format!(
             "SELECT ty, display, value FROM custom_field_data 
             WHERE fields=0 AND id = '{}'",

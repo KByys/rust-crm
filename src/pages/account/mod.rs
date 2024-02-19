@@ -8,7 +8,6 @@ use axum::{
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
-use op::ternary;
 use serde_json::{json, Value};
 
 mod login;
@@ -19,7 +18,7 @@ use crate::{
     database::get_conn,
     libs::{dser::*, time::TIME},
     parse_jwt_macro,
-    perm::{action::OtherGroup, verify_permissions},
+    perm::verify_permissions,
     Response, ResponseResult,
 };
 /// 员工数据
@@ -52,6 +51,7 @@ pub fn account_router() -> Router {
         // .route("/customer/login", post(login::customer_login))
         .route("/user/register", post(register::register_user))
         .route("/user/set/psw", post(set_user_password))
+        .route("/user/full/data/:id", post(query_full_data))
         // .route("/customer/set/psw", post(set_customer_password))
         .route("/role/infos", get(get_role))
 }
@@ -97,10 +97,10 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     let time = TIME::now()?;
     conn.exec_drop(
         "UPDATE user SET password = :password WHERE id = :id",
-        params! {
+        params! (
             "password" => digest.0,
             "id" => &id
-        },
+        ),
     )?;
     conn.query_drop(format!(
         "INSERT INTO token (ty, id, tbn) VALUES (0, '{}', {}) ON DUPLICATE KEY UPDATE tbn = {}",
@@ -119,68 +119,7 @@ pub fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
         AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
     Ok(u)
 }
-macro_rules! __query_staff {
-    // 自动判断
-    ($conn:expr, $d:expr, $whole:expr) => {
-        {
-            let data = op::ternary!($d.eq("?") => __query_staff!($conn); __query_staff!($conn, $d => 2))?;
-            if !$whole {
-                Ok(Response::ok( json!({ "count": data.len() })))
-            } else {
-                let values = if $d.eq("?") {
-                    let mut map: HashMap<String, Vec<User>> = HashMap::new();
-                    for u in data {
-                        map.entry(u.department.clone()).or_default().push(u);
-                    }
-                    map.into_iter().map(|(k, v)| json!({ "department": k, "data": v})).collect()
-                } else {
-                    vec![json!({ "department": $d, "data": data})]
-                };
-                Ok(Response::ok( json!(values)))
-            }
-        }
-    };
-    // 已部门为单位查询
-    ($conn:expr, $d:expr => 2) => {
-        {
-            __query($conn, &format!("department = '{}'", $d), false)
-        }
-    };
-    ($conn:expr) => {
-        {
-            __query($conn, &"id > ''", false)
-        }
-    };
-}
-fn __query(conn: &mut PooledConn, filter: &str, limit: bool) -> mysql::Result<Vec<User>> {
-    conn.query_map(
-        format!(
-            "SELECT * FROM user WHERE ({filter}) AND NOT EXISTS (SELECT 1 FROM leaver l
-         WHERE l.id=user.id) {}",
-            ternary!(limit => "LIMIT 1"; "")
-        ),
-        |u| u,
-    )
-}
 
-#[derive(serde::Deserialize)]
-struct QueryParamsList {
-    department: String,
-    whole: bool,
-}
-async fn query_staff(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let params: QueryParamsList = serde_json::from_value(value)?;
-    let u = get_user(&id, &mut conn)?;
-    let perm = verify_permissions(&u.role, "other", OtherGroup::COMPANY_STAFF_DATA, None).await;
-    let d = ternary!(params.department.is_empty() =>
-        ternary!(perm => "?"; return Err(Response::permission_denied()));
-        ternary!(perm || params.department == u.department => &params.department; return Err(Response::permission_denied()))
-    );
-    __query_staff!(&mut conn, d, params.whole)
-}
 
 async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
@@ -202,6 +141,15 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
     Ok(Response::ok(json!(count.unwrap_or(0))))
 }
 
+async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let _id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user: Option<User> =
+        conn.query_first(format!("SELECT * FROM user WHERE id = '{id}' LIMIT 1"))?;
+    Ok(Response::ok(json!(user)))
+}
+
 async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
@@ -212,10 +160,10 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
             if !verify_permissions(&u.role, "other", "company_staff_data", None).await {
                 return Err(Response::permission_denied());
             }
-            let users: Vec<User> = conn.query(
-                "SELECT u.* FROM user u WHERE NOT EXISTS 
-                   (SELECT 1 FROM leaver l WHERE l.id=u.id)",
-            )?;
+            let users: Vec<User> = conn.query(format!(
+                "SELECT u.* FROM user u WHERE id != '{id}' AND NOT EXISTS 
+                   (SELECT 1 FROM leaver l WHERE l.id=u.id)"
+            ))?;
             let mut map: HashMap<String, Vec<User>> = HashMap::new();
             for u in users {
                 map.entry(u.department.clone()).or_default().push(u);
@@ -237,7 +185,7 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
             }
             let d = op::ternary!(depart.eq("my") => &u.department; &depart);
             let users: Vec<User> = conn.query(format!(
-                "SELECT u.* FROM user u WHERE u.department='{d}' AND NOT EXISTS 
+                "SELECT u.* FROM user u WHERE u.department='{d}' AND id != '{id}' AND NOT EXISTS 
                     (SELECT 1 FROM leaver l WHERE l.id=u.id)"
             ))?;
             vec![json!({

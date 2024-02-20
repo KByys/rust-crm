@@ -93,9 +93,8 @@ impl CustomerGroup {
     pub const RELEASE_CUSTOMER: &str = "release_customer";
 }
 #[forbid(unused)]
-pub static STOREHOUSE: [&str; 3] = [
+pub static STOREHOUSE: [&str; 2] = [
     StorehouseGroup::ACTIVATION,
-    StorehouseGroup::QUERY_PRODUCT,
     StorehouseGroup::PRODUCT,
 ];
 
@@ -103,7 +102,6 @@ pub struct StorehouseGroup;
 
 impl StorehouseGroup {
     pub const ACTIVATION: &str = "activation";
-    pub const QUERY_PRODUCT: &str = "query_product";
     pub const PRODUCT: &str = "product";
     // TODO:
 }

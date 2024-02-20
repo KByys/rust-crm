@@ -87,6 +87,15 @@ unsafe fn role_adm() -> PermissionGroupMap {
 
         map
     });
+    map.insert("storehouse".to_owned(), {
+        let mut map = HashMap::new();
+        map.insert(StorehouseGroup::ACTIVATION.to_owned(), vec![]);
+        map.insert(
+            StorehouseGroup::PRODUCT.to_owned(),
+            vec!["create".into(), "update".into(), "delete".into()],
+        );
+        map
+    });
     map.insert("other".into(), {
         let mut map = HashMap::new();
         map.insert(OtherGroup::QUERY_CHECK_IN.to_owned(), vec![]);

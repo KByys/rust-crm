@@ -253,11 +253,18 @@ async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
         "添加客户，{}-{} : {:#?}",
         user.name, user.smartphone, params
     );
-    
-    if !verify_permissions(&user.role, "customer", CustomerGroup::ENTER_CUSTOMER_DATA, None).await {
+
+    if !verify_permissions(
+        &user.role,
+        "customer",
+        CustomerGroup::ENTER_CUSTOMER_DATA,
+        None,
+    )
+    .await
+    {
         return Err(Response::permission_denied());
     }
-    
+
     c_or_r(__insert_customer, &mut conn, &params, false)?;
     Ok(Response::empty())
 }
@@ -613,7 +620,7 @@ fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(),
         for f in v {
             conn.query_drop(format!(
                 "UPDATE custom_field_data SET value='{}' 
-                WHERE fields=0, ty={ty}, display='{}' LIMIT 1",
+                WHERE fields=0, ty='{ty}', display='{}' LIMIT 1",
                 f.value, f.display
             ))?;
         }

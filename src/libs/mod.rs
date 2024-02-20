@@ -22,6 +22,11 @@ pub struct FilePart {
     pub filename: Option<String>,
     pub content_type: Option<String>,
 }
+impl FilePart {
+    pub fn filename(&self) -> &str {
+        self.filename.as_deref().unwrap_or("unknown.jpg")
+    }
+}
 pub struct MessagePart {
     pub files: Vec<FilePart>,
     pub json: String,

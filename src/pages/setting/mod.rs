@@ -5,7 +5,6 @@ use axum::{
     Router,
 };
 pub use custom::{CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS};
-pub use option::check_drop_down_box;
 // pub use option::DataOptions;
 pub fn setting_router() -> Router {
     Router::new()
@@ -34,4 +33,5 @@ pub fn setting_router() -> Router {
         )
         .route("/customize/infos", get(custom::get_custom_info))
         .route("/customize/info/get/:ty", get(custom::get_custom_info_with))
+        .route("/custom/fields/:ty/:id", get(custom::query_custom_fields))
 }

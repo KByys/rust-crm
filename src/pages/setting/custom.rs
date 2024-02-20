@@ -424,3 +424,12 @@ pub async fn get_custom_info() -> ResponseResult {
         _get_custom_infos(1)
     ])))
 }
+
+
+pub async fn query_custom_fields(Path(ty): Path<u8>, Path(id): Path<String>) -> ResponseResult {
+    let mut conn = get_conn()?;
+    
+    let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;
+    Ok(Response::ok(json!(data)))
+
+}

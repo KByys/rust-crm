@@ -67,7 +67,7 @@ where
     result
 }
 
-pub fn c_or_r_more<F, T, P>(f: F, conn: &mut PooledConn, param: T, more: P) -> Result<(), Response>
+pub fn _c_or_r_more<F, T, P>(f: F, conn: &mut PooledConn, param: T, more: P) -> Result<(), Response>
 where
     F: Fn(&mut PooledConn, T, P) -> Result<(), Response>,
 {

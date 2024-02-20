@@ -1,5 +1,5 @@
 
 fn main() {
-    let dt = "123456";
-    println!("{:?}", dt.splitn(2, '-').collect::<Vec<&str>>())
+    println!("{}", i32::MAX);
+    println!("{:0>6}", 4)
 }

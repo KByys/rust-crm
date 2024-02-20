@@ -1,13 +1,15 @@
 mod product;
 mod report;
 mod sea;
-mod sign;
+// mod sign;
 use std::collections::HashMap;
 
 use axum::Router;
 use mysql::prelude::Queryable;
 
-use crate::pages::STATIC_CUSTOM_FIELDS;
+use crate::{pages::STATIC_CUSTOM_FIELDS, Response};
+
+use self::customer::index::CustomCustomerData;
 
 mod customer;
 
@@ -16,13 +18,71 @@ pub fn func_router() -> Router {
         .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
-        .merge(sign::sign_router())
+        // .merge(sign::sign_router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {
     println!("ver is {:#?}", ver);
     println!("data is {:#?}", data);
-    ver.len() == data.len() && { data.iter().all(|info| ver.iter().any(|v| info.display.eq(v))) }
+    ver.len() == data.len() && {
+        data.iter()
+            .all(|info| ver.iter().any(|v| info.display.eq(v)))
+    }
+}
+
+pub fn get_custom_fields(
+    conn: &mut mysql::PooledConn,
+    id: &str,
+    fields: u8,
+) -> Result<CustomCustomerData, Response> {
+    let data: Vec<(String, String, String)> = conn.query(format!(
+        "SELECT ty, display, value FROM custom_field_data WHERE
+    fields={fields} AND id = '{id}'"
+    ))?;
+    let mut fields = CustomCustomerData::default();
+    for (ty, display, value) in data {
+        let text = match ty.as_str() {
+            "0" => "texts",
+            "1" => "times",
+            "2" => "boxes",
+            _ => return Err(Response::unknown_err("意外错误，不可到达")),
+        };
+        fields
+            .inner
+            .entry(text.to_owned())
+            .or_default()
+            .push(crate::Field { display, value })
+    }
+     for t in ["texts", "times", "boxes"] {
+            fields.inner.entry(t.to_owned()).or_default();
+        }
+    Ok(fields)
+}
+
+pub fn __update_custom_fields(
+    conn: &mut mysql::PooledConn,
+    fields: &HashMap<String, Vec<crate::Field>>,
+    field: u8,
+    id: &str,
+) -> Result<(), Response> {
+    for (k, v) in fields {
+        let ty = match k.as_str() {
+            "texts" => 0,
+            "times" => 1,
+            "boxes" => 2,
+            _ => return Err(Response::invalid_value("自定义字段错误")),
+        };
+        for f in v {
+            let state = format!(
+                "UPDATE custom_field_data SET value='{}' 
+                    WHERE fields={field} AND ty={ty} AND display='{}' AND id='{id}' LIMIT 1",
+                f.value, f.display
+            );
+            println!("{}", state);
+            conn.query_drop(state)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn __insert_custom_fields(

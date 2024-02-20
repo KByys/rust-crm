@@ -1,6 +1,6 @@
 mod index;
-use axum::{extract::Multipart, http::HeaderMap, Router};
+use axum::Router;
 
 pub fn product_router() -> Router {
-    Router::new()
+    Router::new().merge(index::product_router())
 }

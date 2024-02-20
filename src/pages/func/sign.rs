@@ -15,7 +15,7 @@ use serde_json::json;
 use crate::{
     base64_encode, bearer,
     common::empty_deserialize_to_none,
-    database::{c_or_r_more, get_conn},
+    database::{ c_or_r, get_conn},
     libs::{gen_id, parse_multipart, time::TIME, FilePart},
     pages::account::get_user,
     parse_jwt_macro,
@@ -96,7 +96,7 @@ async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     }
     sign.file.pop();
     conn.query_drop("BEGIN")?;
-    c_or_r_more(_insert, &mut conn, &sign, &files)?;
+    c_or_r(_insert, &mut conn, (&sign, &files), false)?;
     todo!()
 }
 fn _insert(

@@ -11,7 +11,7 @@ use crate::{
     bearer, catch,
     database::{c_or_r, get_conn},
     libs::{gen_id, TimeFormat, TIME},
-    pages::account::get_user,
+    pages::{account::get_user, func::{__update_custom_fields, get_custom_fields}},
     parse_jwt_macro,
     perm::{action::CustomerGroup, verify_permissions},
     Field, Response, ResponseResult,
@@ -354,27 +354,28 @@ fn __query_full_data(
 
     let mut data: Option<FullCustomerData> = conn.query_first(query)?;
     if let Some(d) = &mut data {
-        let fields = conn.query::<(String, String, String), String>(format!(
-            "SELECT ty, display, value FROM custom_field_data 
-            WHERE fields=0 AND id = '{}'",
-            d.id
-        ))?;
-        for (ty, display, value) in fields {
-            let ty = match ty.as_str() {
-                "0" => "texts",
-                "1" => "times",
-                "2" => "boxes",
-                _ => return Err(Response::unknown_err("意外错误，不可到达")),
-            };
-            d.custom_fields
-                .inner
-                .entry(ty.to_owned())
-                .or_default()
-                .push(Field { display, value });
-        }
-        for t in ["texts", "times", "boxes"] {
-            d.custom_fields.inner.entry(t.to_owned()).or_default();
-        }
+        d.custom_fields = get_custom_fields(conn, &d.id, 0)?;
+        // let fields = conn.query::<(String, String, String), String>(format!(
+        //     "SELECT ty, display, value FROM custom_field_data 
+        //     WHERE fields=0 AND id = '{}'",
+        //     d.id
+        // ))?;
+        // for (ty, display, value) in fields {
+        //     let ty = match ty.as_str() {
+        //         "0" => "texts",
+        //         "1" => "times",
+        //         "2" => "boxes",
+        //         _ => return Err(Response::unknown_err("意外错误，不可到达")),
+        //     };
+        //     d.custom_fields
+        //         .inner
+        //         .entry(ty.to_owned())
+        //         .or_default()
+        //         .push(Field { display, value });
+        // }
+        // for t in ["texts", "times", "boxes"] {
+        //     d.custom_fields.inner.entry(t.to_owned()).or_default();
+        // }
     }
     Ok(data)
 }
@@ -610,22 +611,23 @@ fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(),
                     "tag" => &params.tag
         },
     )?;
-    for (k, v) in &params.custom_fields {
-        let ty = match k.as_str() {
-            "texts" => 0,
-            "times" => 1,
-            "boxes" => 2,
-            _ => return Err(Response::invalid_value("自定义字段错误")),
-        };
-        for f in v {
-            let state = format!(
-                "UPDATE custom_field_data SET value='{}' 
-                    WHERE fields=0 AND ty={ty} AND display='{}' LIMIT 1",
-                f.value, f.display
-            );
-            println!("{}", state);
-            conn.query_drop(state)?;
-        }
-    }
+    __update_custom_fields(conn,&params.custom_fields, 0, &params.id)?;
+    // for (k, v) in &params.custom_fields {
+    //     let ty = match k.as_str() {
+    //         "texts" => 0,
+    //         "times" => 1,
+    //         "boxes" => 2,
+    //         _ => return Err(Response::invalid_value("自定义字段错误")),
+    //     };
+    //     for f in v {
+    //         let state = format!(
+    //             "UPDATE custom_field_data SET value='{}' 
+    //                 WHERE fields=0 AND ty={ty} AND display='{}' LIMIT 1",
+    //             f.value, f.display
+    //         );
+    //         println!("{}", state);
+    //         conn.query_drop(state)?;
+    //     }
+    // }
     Ok(())
 }

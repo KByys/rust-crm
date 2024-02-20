@@ -618,11 +618,13 @@ fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(),
             _ => return Err(Response::invalid_value("自定义字段错误")),
         };
         for f in v {
-            conn.query_drop(format!(
+            let state = format!(
                 "UPDATE custom_field_data SET value='{}' 
-                WHERE fields=0, ty='{ty}', display='{}' LIMIT 1",
+                    WHERE fields=0 AND ty={ty} AND display='{}' LIMIT 1",
                 f.value, f.display
-            ))?;
+            );
+            println!("{}", state);
+            conn.query_drop(state)?;
         }
     }
     Ok(())

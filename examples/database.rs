@@ -8,7 +8,7 @@ fn main() -> mysql::Result<()> {
     //     println!("{s}--------------");
         
     // }
-    let s: Option<String> = conn.query_first(format!("SELECT 1 FROM user"))?;
+    let s: Option<String> = conn.query_first("SELECT 1 FROM user")?;
         println!("{:?}", s);
     // conn.query_drop(s)?;
     // let ter = conn.query_first::<String, &str>("SELECT role FROM user");

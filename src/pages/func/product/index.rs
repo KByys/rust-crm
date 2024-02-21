@@ -1,15 +1,25 @@
 use crate::{
-    bearer, database::{c_or_r, get_conn}, libs::{gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME}, pages::{
+    bearer,
+    database::{c_or_r, get_conn},
+    libs::{gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME},
+    pages::{
         account::get_user,
         func::{
             __insert_custom_fields, __update_custom_fields, customer::index::CustomCustomerData,
             get_custom_fields,
         },
-        setting::option::check_drop_down_box
-    }, parse_jwt_macro, perm::verify_permissions, response::BodyFile, Response, ResponseResult
+        setting::option::check_drop_down_box,
+    },
+    parse_jwt_macro,
+    perm::verify_permissions,
+    response::BodyFile,
+    Response, ResponseResult,
 };
 use axum::{
-    extract::{Multipart, Path}, http::{HeaderMap, StatusCode}, routing::{delete, get, post}, Json, Router
+    extract::{Multipart, Path},
+    http::{HeaderMap, StatusCode},
+    routing::{delete, get, post},
+    Json, Router,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use serde::{Deserialize, Serialize};
@@ -17,13 +27,13 @@ use serde_json::{json, Value};
 
 pub fn product_router() -> Router {
     Router::new()
-    .route("/product/add", post(add_product))
-    .route("/product/update", post(update_product))
-    .route("/product/update/json", post(update_product_json))
-    .route("/product/delete/:id", delete(delete_product))
-    .route("/product/app/list/data", post(query_product))
-    .route("/product/query/:id", get(query_by))
-    .route("/product/cover/:cover", get(get_cover))
+        .route("/product/add", post(add_product))
+        .route("/product/update", post(update_product))
+        .route("/product/update/json", post(update_product_json))
+        .route("/product/delete/:id", delete(delete_product))
+        .route("/product/app/list/data", post(query_product))
+        .route("/product/query/:id", get(query_by))
+        .route("/product/cover/:cover", get(get_cover))
 }
 
 #[derive(Debug, Deserialize, Serialize, mysql_common::prelude::FromRow)]
@@ -44,7 +54,7 @@ struct ProductParams {
     /// 单位
     unit: String,
     /// 数量
-    amount: String,
+    amount: usize,
     product_type: String,
     price: f32,
     /// 条形码

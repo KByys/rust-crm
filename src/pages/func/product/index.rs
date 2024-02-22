@@ -1,7 +1,10 @@
 use crate::{
     bearer,
     database::{c_or_r, get_conn},
-    libs::{gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME},
+    libs::{gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
+    dser::{
+        deser_f32, serialize_f32_to_string
+    }},
     pages::{
         account::get_user,
         func::{
@@ -56,6 +59,8 @@ struct ProductParams {
     /// 数量
     amount: usize,
     product_type: String,
+    #[serde(deserialize_with = "deser_f32")]
+    #[serde(serialize_with = "serialize_f32_to_string")]
     price: f32,
     /// 条形码
     barcode: String,
@@ -76,6 +81,7 @@ async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let data: ProductParams = serde_json::from_str(&part.json)?;
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
     c_or_r(__insert, &mut conn, (data, file), false)?;
+
     Ok(Response::empty())
 }
 
@@ -87,7 +93,7 @@ fn __insert(
     data.id = gen_id(&time, &data.name);
     let pinyin = rust_pinyin::get_pinyin(&data.name);
     let n: Option<i32> = conn.query_first(format!(
-        "SELECT MAX(num) FROM product_num WHERE name='{}' GROUP BY name",
+        "SELECT num FROM product_num WHERE name='{}'",
         pinyin
     ))?;
 
@@ -100,7 +106,8 @@ fn __insert(
     } else {
         return Err(Response::not_exist("库房不存在"));
     }
-    conn.query_drop("INSERT INTO product_num (name, num) VALUES ('{pinyin}', {n})")?;
+    conn.query_drop(format!("INSERT INTO product_num (name, num) VALUES ('{pinyin}', {n})
+    ON DUPLICATE KEY UPDATE num = {n}"))?;
     data.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     let link = gen_file_link(&time, part.filename());
     conn.exec_drop(
@@ -114,12 +121,13 @@ fn __insert(
             "specification" => data.specification, "cover" => &link,
             "model" => data.model, "unit" => data.unit, "amount" => data.amount,
             "product_type" => data.product_type, "price" => data.price,
+            "explanation" => data.explanation, "storehouse" => data.storehouse,
             "create_time" => data.create_time, "barcode" => data.barcode,
 
         },
     )?;
     __insert_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
-    std::fs::write(format!("/resources/product/cover/{link}"), &part.bytes)?;
+    std::fs::write(format!("resources/product/cover/{link}"), &part.bytes)?;
     Ok(())
 }
 
@@ -182,6 +190,7 @@ fn __update(
             "specification" => data.specification, "cover" => &link,
             "model" => data.model, "unit" => data.unit, "amount" => data.amount,
             "product_type" => data.product_type, "price" => data.price,
+            "explanation" => &data.explanation, "storehouse" => &data.storehouse,
             "barcode" => data.barcode,
         }
     )?;
@@ -189,11 +198,10 @@ fn __update(
     __update_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
 
     if let Some(f) = part {
-        std::fs::write(format!("/resources/product/cover/{link}"), &f.bytes)?;
-        std::fs::remove_file("/resources/product/cover/{cover}")?;
+        std::fs::write(format!("resources/product/cover/{link}"), &f.bytes)?;
+        std::fs::remove_file("resources/product/cover/{cover}")?;
     }
-
-    todo!()
+    Ok(())
 }
 #[derive(Debug, Deserialize)]
 struct QueryParams {
@@ -205,16 +213,20 @@ struct QueryParams {
 async fn query_product(Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let data: QueryParams = serde_json::from_value(value)?;
+    println!("{:#?}", data);
     let stock = match data.stock {
         1 => "> 0",
         2 => "= 0",
         _ => ">= 0",
     };
-    let ty = op::ternary!(data.ty.is_empty() => ">''".into(); format!("= '{}'", data.ty));
+    let ty = op::ternary!(data.ty.is_empty() => "IS NOT NULL".into(); format!("= '{}'", data.ty));
     let storehouse = op::ternary!(data.storehouse.is_empty() => ">''".into(); format!("= '{}'", data.storehouse));
+    println!(
+         "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"
+    );
     let products: Vec<ProductParams> = conn.query(format!(
-        "SELECT *, 1 as custom_fields FROM product WHERE ty {ty} AND storehouse {storehouse} AND amount {stock}"))?;
-
+        "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"))?;
+    println!("{:#?}", products);
     Ok(Response::ok(json!(products)))
 }
 
@@ -247,5 +259,5 @@ fn __delete_product(conn: &mut PooledConn, id: &str) -> Result<(), Response> {
 }
 
 async fn get_cover(Path(cover): Path<String>) -> Result<BodyFile, (StatusCode, String)> {
-    BodyFile::new_with_base64_url("/resources/product/cover", &cover)
+    BodyFile::new_with_base64_url("resources/product/cover", &cover)
 }

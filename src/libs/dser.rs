@@ -4,7 +4,27 @@ use std::fmt::Display;
 
 use crate::{pages::DROP_DOWN_BOX, perm::roles::ROLE_TABLES};
 
+pub fn deser_f32<'de, D>(de: D) -> Result<f32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: String = Deserialize::deserialize(de)?;
+    if let Ok(f) = value.parse::<f32>() {
+        Ok(f)
+    } else {
+        Err(serde::de::Error::custom("price不是浮点数格式"))
+    }
+}
 
+pub fn serialize_f32_to_string<S>(
+    value: &f32,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+     serializer.serialize_str(value.to_string().as_str())
+}
 
 
 pub fn deserialize_bool_to_i32<'de, D>(de: D) -> Result<i32, D::Error>

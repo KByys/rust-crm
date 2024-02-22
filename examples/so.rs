@@ -1,5 +1,6 @@
+use serde_json::json;
+
 
 fn main() {
-    println!("{}", i32::MAX);
-    println!("{:0>6}", 4)
+    println!("{}", json!(10.23))
 }

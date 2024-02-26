@@ -168,8 +168,9 @@ CREATE TABLE IF NOT EXISTS sign(
 
 CREATE TABLE IF NOT EXISTS appointment(
     id VARCHAR(150) NOT NULL,
+    applicant VARCHAR(150) NOT NULL,
     salesman VARCHAR(150) NULL,
-    customer VARCHAR(150) NOT NULL,
+    customer VARCHAR(150) NULL,
     appointment VARCHAR(25) NOT NULL,
     finish_time VARCHAR(25),
     theme VARCHAR(30),

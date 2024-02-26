@@ -27,6 +27,7 @@ pub fn appointment_router() -> Router {
 }
 #[derive(Debug, Deserialize)]
 struct InsertParams {
+    salesman: String,
     customer: String,
     #[serde(deserialize_with = "deser_yyyy_mm_dd_hh_mm")]
     appointment: String,
@@ -51,12 +52,13 @@ async fn add_appointments(
         let id = gen_id(&time, &rand::random::<i32>().to_string());
         conn.query_drop(format!(
             "INSERT INTO appointment 
-            (id, customer, salesman, appointment, finish_time, theme, content) VALUES (
-                '{}', '{}', '{}', '{}', NULL, '{}', '{}'
+            (id, customer, applicant, salesman, appointment, finish_time, theme, content) VALUES (
+                '{}', '{}', '{}', '{}', '{}', NULL, '{}', '{}'
             )",
             id,
             param.customer,
             user_id,
+            param.salesman,
             param.appointment,
             param.theme,
             param.content

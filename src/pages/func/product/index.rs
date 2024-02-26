@@ -1,10 +1,10 @@
 use crate::{
     bearer,
     database::{c_or_r, get_conn},
-    libs::{gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
-    dser::{
-        deser_f32, serialize_f32_to_string
-    }},
+    libs::{
+        dser::{deser_f32, serialize_f32_to_string},
+        gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
+    },
     pages::{
         account::get_user,
         func::{
@@ -106,8 +106,10 @@ fn __insert(
     } else {
         return Err(Response::not_exist("库房不存在"));
     }
-    conn.query_drop(format!("INSERT INTO product_num (name, num) VALUES ('{pinyin}', {n})
-    ON DUPLICATE KEY UPDATE num = {n}"))?;
+    conn.query_drop(format!(
+        "INSERT INTO product_num (name, num) VALUES ('{pinyin}', {n})
+    ON DUPLICATE KEY UPDATE num = {n}"
+    ))?;
     data.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     let link = gen_file_link(&time, part.filename());
     conn.exec_drop(
@@ -173,6 +175,7 @@ fn __update(
         "SELECT cover FROM product WHERE id = '{}' LIMIT 1",
         data.id
     ))?;
+    println!("cover is --{:?}", cover);
     let cover = op::some!(cover; ret Err(Response::not_exist("code: 180909")));
     let time = TIME::now()?;
 
@@ -180,8 +183,10 @@ fn __update(
         let link = gen_file_link(&time, f.filename());
         link
     } else {
-        cover
+        cover.clone()
     };
+
+    println!("{:#?}", data);
     conn.exec_drop(format!("UPDATE product SET num=:num, name=:name, specification=:specification,
         cover=:cover, model=:model, unit=:unit, amount=:amount, product_type=:product_type, price=:price,
         barcode=:barcode, explanation=:explanation, storehouse=:storehouse WHERE id = '{}' LIMIT 1", data.id), 
@@ -196,10 +201,9 @@ fn __update(
     )?;
 
     __update_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
-
     if let Some(f) = part {
         std::fs::write(format!("resources/product/cover/{link}"), &f.bytes)?;
-        std::fs::remove_file("resources/product/cover/{cover}")?;
+        std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
     }
     Ok(())
 }

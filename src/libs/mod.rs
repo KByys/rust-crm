@@ -1,5 +1,6 @@
 pub mod dser;
 pub mod headers;
+pub mod lazy;
 pub mod time;
 
 use axum::extract::Multipart;
@@ -7,7 +8,7 @@ use base64::prelude::Engine;
 
 use crate::Response;
 
-pub use self::time::{TIME, TimeFormat};
+pub use self::time::{TimeFormat, TIME};
 /// base64 url safe encode
 pub fn base64_encode(input: impl AsRef<[u8]>) -> String {
     base64::prelude::BASE64_URL_SAFE_NO_PAD.encode(input)
@@ -82,10 +83,9 @@ fn test() {
     println!("{:?}", parse.unwrap());
 }
 
-
 pub fn parse_file_link(link: &str) -> Result<String, Response> {
     let decode_bytes = base64_decode(link)?;
-    let split: Vec<_> = decode_bytes.splitn(2, |b|*b == 0).collect();
-    let bytes =  *op::some!(split.first(); ret Err(Response::invalid_value("文件链接解析错误")));
+    let split: Vec<_> = decode_bytes.splitn(2, |b| *b == 0).collect();
+    let bytes = *op::some!(split.first(); ret Err(Response::invalid_value("文件链接解析错误")));
     Ok(String::from_utf8_lossy(bytes).to_string())
 }

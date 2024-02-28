@@ -4,9 +4,9 @@ use axum::{extract::Path, http::HeaderMap, routing::post, Json, Router};
 use mysql::prelude::Queryable;
 use serde_json::json;
 
-use crate::{bearer, database::get_conn, parse_jwt_macro, Response, ResponseResult};
+use crate::{bearer, database::get_conn, parse_jwt_macro, perm::verify_permissions, Response, ResponseResult};
 
-use super::account::User;
+use super::account::{get_user, User};
 
 pub fn user_router() -> Router {
     Router::new().route("/user/name/:id", post(get_user_name))
@@ -23,21 +23,28 @@ async fn get_user_name(Path(id): Path<String>) -> ResponseResult {
 #[derive(serde::Deserialize)]
 struct LimitParams {
     customer: String,
+    roles: Vec<String>,
 }
 async fn query_limit_user(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let _uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: LimitParams = serde_json::from_value(value)?;
+    let filter = if data.customer.is_empty() {
+        String::new()
+    } else {
+        format!("and exists (select 1 from extra_customer_data ex where ex.id='{}' and ex.salesman=u.id)", data.customer)
+    };
     // TODO 后面需要考虑共享情况
     let users: Vec<User> = conn.query(format!(
-        "select u.* from user u 
-        join extra_customer_data ex on ex.id='{}' and ex.salesman=u.id", data.customer))?;
+        "select * from user
+        where NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) {filter}"))?;
     let mut map: HashMap<String, Vec<User>> = HashMap::new();
     for u in users {
-        map.entry(u.department.clone()).or_default().push(u);
+        if data.roles.is_empty() || data.roles.contains(&u.role) {
+            map.entry(u.department.clone()).or_default().push(u);
+        }
     }
-
     let values: Vec<serde_json::Value> = map.into_iter().map(|(k, v)| {
         serde_json::json!({
             "department": k,

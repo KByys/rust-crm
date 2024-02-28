@@ -6,7 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::libs::dser::{deser_yyyy_mm_dd_hh_mm, deser_yyyy_mm_dd_hh_mm_ss};
+use crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss;
 use crate::libs::TimeFormat;
 use crate::{
     bearer,
@@ -28,6 +28,12 @@ pub fn appointment_router() -> Router {
         .route(
             "/customer/appointment/data/:id/:limit",
             post(query_appointment),
+        )
+        .route("/customer/appoint/comment/add", post(insert_comment))
+        .route("/customer/appoint/comment/update", post(update_comment))
+        .route(
+            "/customer/appoint/comment/delete/:id",
+            delete(delete_comment),
         )
 }
 #[derive(Debug, Deserialize)]
@@ -184,15 +190,23 @@ async fn insert_comment(header: HeaderMap, Json(value): Json<serde_json::Value>)
     let data: InsertCommentParams = serde_json::from_value(value)?;
     let time = TIME::now()?;
     let id = gen_id(&time, "comment");
+    let create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     conn.query_drop(format!(
         "INSERT INTO appoint_comment (id, applicant, appoint, create_time, comment) VALUES (
         '{id}', '{uid}', '{}', '{}', '{}'
     )",
-        data.appoint,
-        time.format(TimeFormat::YYYYMMDD_HHMMSS),
-        data.comment
+        data.appoint, create_time, data.comment
     ))?;
-    Ok(Response::empty())
+    let name: Option<String> =
+        conn.query_first(format!("select name from user where id = '{uid}' limit 1"))?;
+    Ok(Response::ok(json!({
+        "applicant": uid,
+        "applicant_name": name,
+        "id": id,
+        "appoint": data.appoint,
+        "create_time": create_time,
+        "comment": data.comment
+    })))
 }
 #[derive(Deserialize)]
 struct UpdateCommentParams {

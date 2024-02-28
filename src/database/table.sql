@@ -178,6 +178,16 @@ CREATE TABLE IF NOT EXISTS appointment(
     PRIMARY KEY (id)
 );
 
+CREATE TABLE IF NOT EXISTS appoint_comment (
+    id VARCHAR(150) NOT NULL,
+    applicant VARCHAR(150) NOT NULL,
+    appoint VARCHAR(150) NOT NULL,
+    create_time VARCHAR(25) NOT NULL,
+    comment TEXT,
+    PRIMARY KEY (id)
+);
+
+
 CREATE TABLE IF NOT EXISTS token(
     ty INT NOT NULL,
     id VARCHAR(150) NOT NULL,
@@ -214,32 +224,37 @@ CREATE TABLE IF NOT EXISTS product_num(
 );
 
 -- 报告表
--- cc 抄送人，ac 管理客户， reviewer 批阅者
--- ty, 0 日报，1 周报，2 月报
--- status, 0 未审批，1 审批通过，2 审批未通过, 3 未发送
--- 不添加外键
 CREATE TABLE IF NOT EXISTS report(
     id VARCHAR (150) NOT NULL,
-    applicant VARCHAR(15) NOT NULL,
-    reviewer VARCHAR(15) NOT NULL,
+    applicant VARCHAR(150) NOT NULL,
+    reviewer VARCHAR(150) NOT NULL,
+    -- 0 日报，1 周报，2 月报
     ty INT NOT NULL,
-    status INT NOT NULL,
     create_time VARCHAR (25) NOT NULL,
-    cc VARCHAR(15) NULL,
-    ac VARCHAR(15) NULL,
+    -- 关联客户
+    ac VARCHAR(150) NULL,
     contents TEXT NOT NULL,
     send_time VARCHAR (25) NULL,
     processing_time VARCHAR(25) NULL,
     opinion TEXT NULL,
+    -- 0 审批通过，1 不通过, 2未审批，
+    status INT NOT NULL,
     PRIMARY KEY (id)
 );
+-- 报告抄送人
+CREATE TABLE IF NOT EXISTS report_cc (
+    cc VARCHAR(150) NOT NULL,
+    report VARCHAR(150) NOT NULL,
+    PRIMARY KEY (cc, report)
+);
+
 
 -- 报告回复
 CREATE TABLE IF NOT EXISTS report_reply(
-    id VARCHAR(55) NOT NULL,
-    report_id VARCHAR(55) NOT NULL,
+    id VARCHAR(150) NOT NULL,
+    report VARCHAR(150) NOT NULL,
     create_time VARCHAR(25) NOT NULL,
     contents TEXT NOT NULL,
-    respondent VARCHAR(15) NOT NULL,
+    applicant VARCHAR(150) NOT NULL,
     PRIMARY KEY (id)
 );

@@ -107,6 +107,19 @@ where
     Ok(id)
 }
 
+pub fn deserialize_roles<'de, D>(de: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let roles: Vec<String> = Deserialize::deserialize(de)?;
+    Ok(unsafe {
+        roles
+            .into_iter()
+            .map(|r| ROLE_TABLES.get_id(&r).map_or(r, |v| v.to_string()))
+    }
+    .collect())
+}
+
 pub fn deserialize_mm_dd<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,

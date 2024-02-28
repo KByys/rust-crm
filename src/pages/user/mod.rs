@@ -4,7 +4,7 @@ use axum::{extract::Path, http::HeaderMap, routing::post, Json, Router};
 use mysql::prelude::Queryable;
 use serde_json::json;
 
-use crate::{bearer, database::get_conn, parse_jwt_macro, perm::verify_permissions, Response, ResponseResult};
+use crate::{bearer, database::get_conn, libs::dser::deserialize_roles, parse_jwt_macro, perm::verify_permissions, Response, ResponseResult};
 
 use super::account::{get_user, User};
 
@@ -23,6 +23,7 @@ async fn get_user_name(Path(id): Path<String>) -> ResponseResult {
 #[derive(serde::Deserialize)]
 struct LimitParams {
     customer: String,
+    #[serde(deserialize_with = "deserialize_roles")]
     roles: Vec<String>,
 }
 async fn query_limit_user(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {

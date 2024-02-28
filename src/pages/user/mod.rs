@@ -37,7 +37,7 @@ async fn query_limit_user(header: HeaderMap, Json(value): Json<serde_json::Value
     };
     // TODO 后面需要考虑共享情况
     let users: Vec<User> = conn.query(format!(
-        "select * from user
+        "select * from user u
         where NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) {filter}"))?;
     let mut map: HashMap<String, Vec<User>> = HashMap::new();
     for u in users {

@@ -180,6 +180,7 @@ fn __update(
     let time = TIME::now()?;
 
     let link = if let Some(f) = part {
+        println!("{}", f.filename());
         let link = gen_file_link(&time, f.filename());
         link
     } else {
@@ -203,6 +204,7 @@ fn __update(
     __update_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
     if let Some(f) = part {
         std::fs::write(format!("resources/product/cover/{link}"), &f.bytes)?;
+        println!("remove -- {}", cover);
         std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
     }
     Ok(())
@@ -257,8 +259,12 @@ async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseRe
     Ok(Response::empty())
 }
 fn __delete_product(conn: &mut PooledConn, id: &str) -> Result<(), Response> {
+    let cover: Option<String> = conn.query_first(format!("select cover from product where id = '{id}'"))?;
     conn.query_drop(format!("DELETE FROM custom_field_data WHERE id = '{id}'"))?;
     conn.query_drop(format!("DELETE FROM product WHERE id = '{id}' LIMIT 1"))?;
+    if let Some(cover) = cover {
+        std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
+    }
     Ok(())
 }
 

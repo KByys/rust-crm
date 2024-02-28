@@ -171,7 +171,8 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
-    } else if data.value.is_empty() {
+    }
+    if data.value.is_empty() {
         // 字段为空字符串则忽略
         return Err(Response::empty());
     }
@@ -436,7 +437,7 @@ pub async fn get_custom_info() -> ResponseResult {
     ])))
 }
 
-pub async fn query_custom_fields(Path(ty): Path<u8>, Path(id): Path<String>) -> ResponseResult {
+pub async fn query_custom_fields(Path((ty, id)): Path<(u8, String)>) -> ResponseResult {
     let mut conn = get_conn()?;
 
     let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;

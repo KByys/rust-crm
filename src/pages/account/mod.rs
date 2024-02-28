@@ -120,7 +120,6 @@ pub fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
     Ok(u)
 }
 
-
 async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;

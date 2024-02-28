@@ -131,7 +131,7 @@ pub fn parse_jwt(bearer: &Bearer) -> Option<JWToken> {
     let token: Token<Header, BTreeMap<String, String>, _> =
         VerifyWithKey::verify_with_key(bearer.token(), &key).ok()?;
     let claims = token.claims();
-    Some( JWToken {
+    Some(JWToken {
         id: claims.get("id")?.into(),
         sub: claims.get("sub")?.parse().ok()?,
         iss: claims.get("iss")?.into(),

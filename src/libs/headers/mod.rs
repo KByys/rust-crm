@@ -1,12 +1,11 @@
 mod basic;
 pub use basic::Bearer;
 
-use base64::DecodeError;
 use axum::http;
+use base64::DecodeError;
 use http::header::ToStrError;
-use std::{fmt::Display, string::FromUtf8Error};
 pub use http::header::{HeaderMap, HeaderName, HeaderValue, InvalidHeaderName, InvalidHeaderValue};
-
+use std::{fmt::Display, string::FromUtf8Error};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HeaderParserError {

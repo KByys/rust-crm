@@ -1,7 +1,8 @@
 use axum::{
     extract::{DefaultBodyLimit, Path},
     http::{Method, StatusCode},
-    Router, routing::{post, get},
+    routing::{get, post},
+    Router,
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -12,7 +13,8 @@ async fn hello(Path(message): Path<String>) -> (StatusCode, String) {
 
 #[tokio::main]
 async fn main() {
-    let router = Router::new().route("/hello/:message", get(hello))
+    let router = Router::new()
+        .route("/hello/:message", get(hello))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

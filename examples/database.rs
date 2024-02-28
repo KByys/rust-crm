@@ -6,10 +6,10 @@ fn main() -> mysql::Result<()> {
     // let s = include_str!("re.sql");
     // for s in s.split(';') {
     //     println!("{s}--------------");
-        
+
     // }
     let s: Option<String> = conn.query_first("SELECT 1 FROM user")?;
-        println!("{:?}", s);
+    println!("{:?}", s);
     // conn.query_drop(s)?;
     // let ter = conn.query_first::<String, &str>("SELECT role FROM user");
     // println!("{:?}", ter);

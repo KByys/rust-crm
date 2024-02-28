@@ -15,10 +15,9 @@ lazy_static::lazy_static! {
 #[tokio::main]
 async fn main() {
     let tt: Option<i32> = None;
-   let pasrt = params! {
-        "te" => Some(45),
-        "test" => tt
-   };
-   println!("{:#?}", pasrt)
-
+    let pasrt = params! {
+         "te" => Some(45),
+         "test" => tt
+    };
+    println!("{:#?}", pasrt)
 }

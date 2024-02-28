@@ -95,14 +95,13 @@ impl CustomFields {
         }
     }
     pub fn remove_display(&mut self, ty: usize, display: &str) {
-         let mut buf = Vec::new();
-         for item in &self.fields {
-             if item.ty != ty || item.display != display {
+        let mut buf = Vec::new();
+        for item in &self.fields {
+            if item.ty != ty || item.display != display {
                 buf.push(item.clone())
-                 
-             }
-         }
-         self.fields = buf;
+            }
+        }
+        self.fields = buf;
     }
     pub fn update(&mut self, ty: usize, display: &str, old_value: &str, new_value: String) {
         for item in &mut self.fields {
@@ -259,7 +258,10 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!("修改自定义字段，操作者：{}，数据：{:#?}", id, value));
+    debug_info(format!(
+        "修改自定义字段，操作者：{}，数据：{:#?}",
+        id, value
+    ));
     let data: CustomInfos = serde_json::from_value(value)?;
     if !matches!(data.display.as_str(), "0" | "1" | "2") {
         return Err(Response::invalid_value(format!(
@@ -293,12 +295,21 @@ fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
             param.new_value, param.old_value, param.ty
         ))?;
         unsafe {
-            STATIC_CUSTOM_BOX_OPTIONS.update_display(param.ty, &param.old_value, param .new_value.to_owned())
+            STATIC_CUSTOM_BOX_OPTIONS.update_display(
+                param.ty,
+                &param.old_value,
+                param.new_value.to_owned(),
+            )
         }
     }
-    
+
     unsafe {
-        STATIC_CUSTOM_FIELDS.update(param.ty, &param.display, &param.old_value, param.new_value.to_owned())
+        STATIC_CUSTOM_FIELDS.update(
+            param.ty,
+            &param.display,
+            &param.old_value,
+            param.new_value.to_owned(),
+        )
     }
     Ok(())
 }
@@ -315,7 +326,7 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
     if data.new_value.is_empty() {
         return Ok(Response::empty());
     }
-    
+
     // let table = CUSTOM_BOX_FIELDS[data.ty];
     conn.query_drop(format!(
         "UPDATE custom_field_option SET value = '{}' WHERE value = '{}' AND display = '{}' AND ty = {}",
@@ -384,7 +395,7 @@ pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
     // let table = CUSTOM_BOX_FIELDS[data.ty];
     conn.query_drop(format!(
         "DELETE FROM custom_field_option WHERE value = '{}' AND display = '{}' AND ty = {}",
-        data.value, data.display,  data.ty
+        data.value, data.display, data.ty
     ))?;
     unsafe {
         STATIC_CUSTOM_BOX_OPTIONS.remove(data.ty, &data.display, &data.value);
@@ -425,11 +436,9 @@ pub async fn get_custom_info() -> ResponseResult {
     ])))
 }
 
-
 pub async fn query_custom_fields(Path(ty): Path<u8>, Path(id): Path<String>) -> ResponseResult {
     let mut conn = get_conn()?;
-    
+
     let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;
     Ok(Response::ok(json!(data)))
-
 }

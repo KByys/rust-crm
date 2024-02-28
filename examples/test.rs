@@ -20,9 +20,11 @@ struct Test {
 }
 
 fn main() {
-
     let value: Value = serde_json::from_str(&format!("{:?}", MY_HASHMAP.clone())).unwrap();
     println!("{:#?}", value);
-    println!("{:#?}", serde_json::from_value::<HashMap<String, String>>(value.clone()));
+    println!(
+        "{:#?}",
+        serde_json::from_value::<HashMap<String, String>>(value.clone())
+    );
     println!("{:#?}", serde_json::from_value::<Test>(value.clone()));
 }

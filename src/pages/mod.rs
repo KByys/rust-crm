@@ -7,8 +7,7 @@ pub mod func;
 mod message;
 mod setting;
 pub use setting::{
-    option::*,
-    CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS
+    option::*, CustomFields, Field, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS,
 };
 
 pub fn pages_router() -> Router {

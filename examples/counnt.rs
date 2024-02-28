@@ -1,6 +1,5 @@
 use std::{collections::VecDeque, fs::read_dir, path::PathBuf};
 
-
 fn main() -> std::io::Result<()> {
     let mut queue = VecDeque::new();
     queue.push_back(PathBuf::from("src"));
@@ -13,8 +12,7 @@ fn main() -> std::io::Result<()> {
             } else {
                 let data = std::fs::read_to_string(path)?;
                 let d: Vec<_> = data.lines().collect();
-                count += d.len();                   
-
+                count += d.len();
             }
         }
     }

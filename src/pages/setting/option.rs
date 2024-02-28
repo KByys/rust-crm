@@ -23,7 +23,6 @@ pub fn check_drop_down_box(key: &str, value: &str) -> Option<bool> {
     }
 }
 
-
 pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
     "customer_type",
     "customer_status",

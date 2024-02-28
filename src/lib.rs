@@ -15,7 +15,6 @@ pub use libs::{base64_decode, base64_encode};
 use mysql_common::prelude::FromRow;
 pub use response::Response;
 use serde_json::json;
-
 pub type ResponseResult = Result<Response, Response>;
 #[inline]
 pub fn debug_info(info: String) {
@@ -28,7 +27,7 @@ pub fn debug_info(info: String) {
 }
 
 pub fn get_value<'a>(value: &'a serde_json::Value, index: &str) -> Option<&'a str> {
-    value.get(index).and_then(|s|s.as_str())
+    value.get(index).and_then(|s| s.as_str())
 }
 
 #[derive(serde::Serialize, FromRow, Debug, serde::Deserialize, Clone)]

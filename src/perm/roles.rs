@@ -8,9 +8,7 @@ pub struct RoleTable {
 
 impl RoleTable {
     pub const fn empty() -> RoleTable {
-        RoleTable {
-            table: Vec::new(),
-        }
+        RoleTable { table: Vec::new() }
     }
     pub fn init(&mut self, conn: &mut PooledConn) {
         let map: Vec<(String, String)> = conn
@@ -21,8 +19,7 @@ impl RoleTable {
         }
     }
     pub fn update(&mut self, conn: &mut PooledConn) -> mysql::Result<()> {
-        self.table =
-            conn.query_map("SELECT id, name FROM roles", |(id, name)| (name, id))?;
+        self.table = conn.query_map("SELECT id, name FROM roles", |(id, name)| (name, id))?;
         Ok(())
     }
     pub fn get_name(&self, id: &str) -> Option<&str> {

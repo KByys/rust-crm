@@ -1,11 +1,7 @@
-use std::cmp::Ordering;
-
 use crate::{
     bearer,
     database::get_conn,
-    libs::{
-        time::{TimeFormat, TIME},
-    },
+    libs::time::{TimeFormat, TIME},
     parse_jwt_macro, Response, ResponseResult, ID, SEA_MAX_DAY, SEA_MIN_DAY,
 };
 use axum::{
@@ -106,15 +102,12 @@ struct SeaInfo {
     time: String,
 }
 
-
-
-
 async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Sea = serde_json::from_value(value)?;
-    
+
     // let mut infos = match Identity::new(&id, &mut conn)? {
     //     Identity::Administrator(_, d) => query(&mut conn, &data, &d)?,
     //     Identity::Boss => query(&mut conn, &data, &data.department)?,
@@ -130,7 +123,6 @@ async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResu
     // Ok(Response::ok(json!(infos)))
     todo!()
 }
-
 
 fn query(conn: &mut PooledConn, data: &Sea, d: &str) -> mysql::Result<Vec<SeaInfo>> {
     let infos = match data.scope {

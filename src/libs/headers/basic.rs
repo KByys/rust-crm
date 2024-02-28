@@ -56,7 +56,6 @@ impl TryFrom<&str> for Bearer {
     }
 }
 unsafe impl Send for Bearer {}
-    
 
 unsafe impl Sync for Bearer {}
 impl Unpin for Bearer {}

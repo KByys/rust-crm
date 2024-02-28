@@ -10,6 +10,7 @@ pub fn user_router() -> Router {
 
 async fn get_user_name(Path(id): Path<String>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let name: Option<String> = conn.query_first(format!("SELECT name FROM user WHERE id = '{id}' LIMIT 1"))?;
+    let name: Option<String> =
+        conn.query_first(format!("SELECT name FROM user WHERE id = '{id}' LIMIT 1"))?;
     Ok(Response::ok(json!(name)))
 }

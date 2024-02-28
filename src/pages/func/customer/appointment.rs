@@ -1,13 +1,12 @@
-
 use axum::extract::Path;
 use axum::routing::{delete, post};
 use axum::{http::HeaderMap, Json, Router};
 use mysql::{prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
-use crate::libs::dser::deser_yyyy_mm_dd_hh_mm;
+use crate::libs::dser::{deser_yyyy_mm_dd_hh_mm, deser_yyyy_mm_dd_hh_mm_ss};
 use crate::libs::TimeFormat;
 use crate::{
     bearer,
@@ -20,16 +19,22 @@ use super::index::check_user_customer;
 
 pub fn appointment_router() -> Router {
     Router::new()
-     .route("/customer/appointment/add", post(add_appointments))   
-     .route("/customer/appointment/delete/:id", delete(delete_appointment))   
-     .route("/customer/appointment/finish/:id", post(finish_appointment))   
-     .route("/customer/appointment/data/:id", post(query_appointment))   
+        .route("/customer/appointment/add", post(add_appointments))
+        .route(
+            "/customer/appointment/delete/:id",
+            delete(delete_appointment),
+        )
+        .route("/customer/appointment/finish/:id", post(finish_appointment))
+        .route(
+            "/customer/appointment/data/:id/:limit",
+            post(query_appointment),
+        )
 }
 #[derive(Debug, Deserialize)]
 struct InsertParams {
     salesman: String,
     customer: String,
-    #[serde(deserialize_with = "deser_yyyy_mm_dd_hh_mm")]
+    #[serde(deserialize_with = "deser_yyyy_mm_dd_hh_mm_ss")]
     appointment: String,
     theme: String,
     content: String,
@@ -63,7 +68,6 @@ async fn add_appointments(
             param.theme,
             param.content
         ))?;
-
     }
     Ok(Response::empty())
 }
@@ -102,7 +106,8 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
     let time = TIME::now()?;
     conn.query_drop(format!(
         "UPDATE appointment SET finish_time = '{}' WHERE id = '{}' LIMIT 1",
-        time.format(TimeFormat::YYYYMMDD_HHMM) , id
+        time.format(TimeFormat::YYYYMMDD_HHMMSS),
+        id
     ))?;
     Ok(Response::empty())
 }
@@ -110,14 +115,110 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
 struct AppointmentResponse {
     id: String,
     salesman: String,
+    salesman_name: String,
+    applicant: String,
+    applicant_name: String,
     appointment: String,
     finish_time: Option<String>,
     theme: String,
     content: String,
 }
 
-async fn query_appointment(Path(id): Path<String>) -> ResponseResult {
+fn join_to_json(appoint: &AppointmentResponse, comments: &[Comment]) -> Value {
+    json!({
+        "id": appoint.id,
+        "salesman": appoint.salesman,
+        "salesman_name": appoint.salesman_name,
+        "applicant": appoint.applicant,
+        "applicant_name": appoint.applicant_name,
+        "appointment": appoint.appointment,
+        "finish_time": appoint.finish_time,
+        "theme": appoint.theme,
+        "content": appoint.content,
+        "comments": comments
+    })
+}
+
+#[derive(Serialize, FromRow)]
+struct Comment {
+    applicant: String,
+    applicant_name: String,
+    id: String,
+    appoint: String,
+    create_time: String,
+    comment: String,
+}
+
+async fn query_appointment(Path(id): Path<String>, Path(limit): Path<usize>) -> ResponseResult {
     let mut conn = get_conn()?;
-    let res: Vec<AppointmentResponse> = conn.query(format!("SELECT * FROM appointment WHERE customer = '{}' ORDER BY appointment DESC", id))?;
-    Ok(Response::ok(json!(res)))
+    let res: Vec<AppointmentResponse> = conn.query(format!(
+        "SELECT app.*, a.name as applicant_name, s.name as salesman_name FROM appointment app
+        JOIN user a ON a.id = app.applicant
+        JOIN user s ON s.id = app.salesman
+        WHERE app.customer = '{}' ORDER BY appointment DESC LIMIT '{limit}'",
+        id
+    ))?;
+    let mut data = Vec::new();
+    for a in res {
+        let comments = conn.query(format!(
+            "SELECT com.*, a.name as applicant_name FROM appoint_comment com 
+            JOIN user a ON a.id = com.applicant
+            WHERE com.appoint = '{}'",
+            a.id
+        ))?;
+        data.push(join_to_json(&a, &comments));
+    }
+
+    Ok(Response::ok(json!(data)))
+}
+#[derive(Debug, Deserialize)]
+struct InsertCommentParams {
+    comment: String,
+    appoint: String,
+}
+
+async fn insert_comment(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let data: InsertCommentParams = serde_json::from_value(value)?;
+    let time = TIME::now()?;
+    let id = gen_id(&time, "comment");
+    conn.query_drop(format!(
+        "INSERT INTO appoint_comment (id, applicant, appoint, create_time, comment) VALUES (
+        '{id}', '{uid}', '{}', '{}', '{}'
+    )",
+        data.appoint,
+        time.format(TimeFormat::YYYYMMDD_HHMMSS),
+        data.comment
+    ))?;
+    Ok(Response::empty())
+}
+#[derive(Deserialize)]
+struct UpdateCommentParams {
+    id: String,
+    comment: String,
+}
+
+async fn update_comment(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let data: UpdateCommentParams = serde_json::from_value(value)?;
+    conn.query_drop(format!(
+        "UPDATE appoint_comment SET comment = '{}' WHERE id = '{}' AND applicant = '{uid}' LIMIT 1
+    ",
+        data.comment, data.id
+    ))?;
+    Ok(Response::empty())
+}
+
+async fn delete_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    conn.query_drop(format!(
+        "DELETE FROM appoint_comment WHERE id = '{id}' AND applicant = '{uid}' LIMIT 1"
+    ))?;
+    Ok(Response::empty())
 }

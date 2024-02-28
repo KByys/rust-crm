@@ -22,7 +22,6 @@ struct LoginID {
 
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
-    
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
         let token = match parse_jwt(&bearer) {
             Some(token) if !token.sub => {
@@ -77,8 +76,10 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
     } else {
         let user: LoginID = serde_json::from_value(value)?;
         let digest = md5::compute(&user.password);
-        let info: Option<User> =
-            conn.query_first(format!("SELECT * FROM user WHERE smartphone = '{}'", user.smartphone))?;
+        let info: Option<User> = conn.query_first(format!(
+            "SELECT * FROM user WHERE smartphone = '{}'",
+            user.smartphone
+        ))?;
         println!("{:?}", info);
         if let Some(user) = info {
             if user.password.as_slice() != digest.0.as_slice() {
@@ -98,7 +99,10 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
                 }
             }
         } else {
-            Err(Response::not_exist(format!("{} 用户不存在", user.smartphone)))
+            Err(Response::not_exist(format!(
+                "{} 用户不存在",
+                user.smartphone
+            )))
         }
     }
 }

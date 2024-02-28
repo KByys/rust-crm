@@ -1,7 +1,12 @@
 use std::fs::create_dir;
 
 use axum::{extract::DefaultBodyLimit, http::Method, Router};
-use crm_rust::{database::get_conn, pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS}, perm::roles::ROLE_TABLES, read_data, Config, MYSQL_URI};
+use crm_rust::{
+    database::get_conn,
+    pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS},
+    perm::roles::ROLE_TABLES,
+    read_data, Config, MYSQL_URI,
+};
 use tower_http::cors::{Any, CorsLayer};
 #[tokio::main]
 async fn main() {
@@ -38,8 +43,12 @@ async fn main() {
 unsafe fn init_static() {
     let mut conn = get_conn().expect("初始化失败");
     ROLE_TABLES.init(&mut conn);
-    STATIC_CUSTOM_FIELDS.init(&mut conn, "custom_fields").expect("err code: 1");
-    STATIC_CUSTOM_BOX_OPTIONS.init(&mut conn, "custom_field_option").expect("err code: 2");
+    STATIC_CUSTOM_FIELDS
+        .init(&mut conn, "custom_fields")
+        .expect("err code: 1");
+    STATIC_CUSTOM_BOX_OPTIONS
+        .init(&mut conn, "custom_field_option")
+        .expect("err code: 2");
     DROP_DOWN_BOX.init(&mut conn).expect("err code: 3");
     // crm_rust::pages::func::cust::STATIC_CUSTOMER_LEVEL.init();
 }

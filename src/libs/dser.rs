@@ -16,16 +16,12 @@ where
     }
 }
 
-pub fn serialize_f32_to_string<S>(
-    value: &f32,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+pub fn serialize_f32_to_string<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-     serializer.serialize_str(value.to_string().as_str())
+    serializer.serialize_str(value.to_string().as_str())
 }
-
 
 pub fn deserialize_bool_to_i32<'de, D>(de: D) -> Result<i32, D::Error>
 where
@@ -33,6 +29,15 @@ where
 {
     let value: bool = Deserialize::deserialize(de)?;
     Ok(op::ternary!(value => 0; 1))
+}
+pub fn serialize_empty_to_none<S>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(k) if !k.is_empty() => serializer.serialize_str(k),
+        _ => serializer.serialize_none(),
+    }
 }
 pub fn deser_empty_to_none<'de, D>(de: D) -> Result<Option<String>, D::Error>
 where
@@ -123,6 +128,16 @@ fn regex_time<'de, D: Deserializer<'de>>(re: &str, de: D, err: &str) -> Result<S
     }
 }
 
+pub fn deser_yyyy_mm_dd_hh_mm_ss<'de, D>(de: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    regex_time(
+        r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})",
+        de,
+        "YYYY-MM-DD HH:MM:SS",
+    )
+}
 pub fn deser_yyyy_mm_dd_hh_mm<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,

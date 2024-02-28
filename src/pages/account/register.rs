@@ -1,6 +1,7 @@
 use super::{get_user, User};
 use crate::catch;
 use crate::libs::{dser::*, gen_id, TIME};
+use crate::pages::check_drop_down_box;
 use crate::perm::verify_permissions;
 use crate::{bearer, database::get_conn, debug_info, parse_jwt_macro, Response, ResponseResult};
 use axum::{http::HeaderMap, Json};
@@ -41,7 +42,7 @@ pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
     if k.is_some() {
         return Err(Response::dissatisfy("只允许有一位最高权限者"));
     }
-    
+
     root.id = gen_id(&TIME::now()?, &root.name);
     __insert_user!(
         conn,
@@ -64,6 +65,11 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     debug_info(format!("注册操作，操作者{}，数据:{:?}", id, value));
     let mut regis: User = serde_json::from_value(value)?;
+    if let Some(true) = check_drop_down_box("department", &regis.department) {
+        // nothing
+    } else {
+        return Err(Response::not_exist("部门不存在"));
+    }
     let adm = get_user(&id, &mut conn)?;
     regis.id = gen_id(&TIME::now()?, &regis.name);
     if ver_user_perm(&adm, &regis).await {

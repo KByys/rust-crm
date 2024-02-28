@@ -1,5 +1,6 @@
 mod product;
 mod report;
+// mod report;
 mod sea;
 // mod sign;
 use std::collections::HashMap;
@@ -18,7 +19,7 @@ pub fn func_router() -> Router {
         .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
-        // .merge(sign::sign_router())
+    // .merge(sign::sign_router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {
@@ -53,9 +54,9 @@ pub fn get_custom_fields(
             .or_default()
             .push(crate::Field { display, value })
     }
-     for t in ["texts", "times", "boxes"] {
-            fields.inner.entry(t.to_owned()).or_default();
-        }
+    for t in ["texts", "times", "boxes"] {
+        fields.inner.entry(t.to_owned()).or_default();
+    }
     Ok(fields)
 }
 
@@ -111,7 +112,7 @@ pub fn __insert_custom_fields(
     }
     let mut values = String::new();
     for (k, v) in fields {
-        let s = op::some!(get_ty(k); con);
+        let s = op::some!(get_ty(k); continue);
         for field in v {
             values.push_str(&format!(
                 "({ty}, {s}, '{id}', '{}', '{}'),",

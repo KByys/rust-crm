@@ -159,7 +159,7 @@ struct Comment {
     comment: String,
 }
 
-async fn query_appointment(Path(id): Path<String>, Path(limit): Path<usize>) -> ResponseResult {
+async fn query_appointment(Path((id, limit)): Path<(String, usize)>) -> ResponseResult {
     let mut conn = get_conn()?;
     let res: Vec<AppointmentResponse> = conn.query(format!(
         "SELECT app.*, a.name as applicant_name, s.name as salesman_name FROM appointment app

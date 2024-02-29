@@ -38,6 +38,8 @@ pub fn appointment_router() -> Router {
 }
 #[derive(Debug, Deserialize)]
 struct InsertParams {
+
+    #[serde(rename = "visitor")]
     salesman: String,
     customer: String,
     #[serde(deserialize_with = "deser_yyyy_mm_dd_hh_mm_ss")]
@@ -120,7 +122,9 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
 #[derive(Debug, Serialize, FromRow)]
 struct AppointmentResponse {
     id: String,
+    #[serde(rename = "visitor")]
     salesman: String,
+    #[serde(rename = "visitor_name")]
     salesman_name: String,
     applicant: String,
     applicant_name: String,

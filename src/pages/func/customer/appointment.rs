@@ -165,7 +165,7 @@ async fn query_appointment(Path((id, limit)): Path<(String, usize)>) -> Response
         "SELECT app.*, a.name as applicant_name, s.name as salesman_name FROM appointment app
         JOIN user a ON a.id = app.applicant
         JOIN user s ON s.id = app.salesman
-        WHERE app.customer = '{}' ORDER BY appointment DESC LIMIT '{limit}'",
+        WHERE app.customer = '{}' ORDER BY appointment DESC LIMIT {limit}",
         id
     ))?;
     let mut data = Vec::new();

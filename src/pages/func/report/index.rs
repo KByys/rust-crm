@@ -232,11 +232,11 @@ fn __query(conn: &mut PooledConn, params: &QueryParams, uid: &str) -> Result<Vec
         return Err(Response::permission_denied());
     }
     let status = match params.status {
-        0 => "r.send_time is null",
-        1 => "r.send_time is not null and r.status=2",
-        2 => "r.status=0",
-        3 => "r.status=1",
-        _ => "r.status is not null",
+        0 => "r.send_time is not null and r.status=2",
+        1 => "r.status=0",
+        2 => "r.status=1",
+        3 => "r.status is not null",
+        _ => "r.send_time is null",
     };
     let ty = match params.ty {
         0..=2 => format!("= {}", params.ty),

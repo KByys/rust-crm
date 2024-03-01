@@ -1,5 +1,5 @@
 use axum::extract::Path;
-use axum::routing::{delete, post};
+use axum::routing::{delete, get, post};
 use axum::{http::HeaderMap, Json, Router};
 use mysql::{prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
@@ -36,6 +36,7 @@ pub fn appointment_router() -> Router {
             "/customer/appoint/comment/delete/:id",
             delete(delete_comment),
         )
+        .route("/customer/appoint/comment/query/:id", get(query_comment))
 }
 #[derive(Debug, Deserialize)]
 struct InsertParams {
@@ -265,4 +266,18 @@ async fn delete_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseRe
         "DELETE FROM appoint_comment WHERE id = '{id}' AND applicant = '{uid}' LIMIT 1"
     ))?;
     Ok(Response::empty())
+}
+async fn query_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let _uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let comments: Vec<Comment> = conn.query(format!(
+        "select c.*, u.name as applicant_name 
+        from appoint_comment c 
+        join user u on u.id=c.applicant 
+        where c.id='{id}' 
+        order by c.create_time"
+    ))?;
+    Ok(Response::ok(json!(comments)))
+
 }

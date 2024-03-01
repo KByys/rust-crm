@@ -275,7 +275,7 @@ async fn query_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseRes
         "select c.*, u.name as applicant_name 
         from appoint_comment c 
         join user u on u.id=c.applicant 
-        where c.id='{id}' 
+        where c.appoint='{id}' 
         order by c.create_time"
     ))?;
     Ok(Response::ok(json!(comments)))

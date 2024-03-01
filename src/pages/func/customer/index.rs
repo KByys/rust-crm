@@ -91,16 +91,6 @@ pub struct Customer {
     pub custom_fields: CustomCustomerData,
 }
 
-// #[derive(Serialize, Deserialize, Debug, FromRow)]
-// pub struct ExtraCustomerData {
-//     pub salesman: Option<String>,
-//     pub next_visit_time: String,
-//     pub last_visited_time: Option<String>,
-//     pub visited_count: usize,
-//     pub last_transaction_time: Option<String>,
-//     pub push_to_sea_date: Option<String>,
-//     pub pop_from_sea_date: Option<String>,
-// }
 
 #[derive(Serialize, Debug, FromRow)]
 pub struct ListData {
@@ -358,27 +348,6 @@ fn __query_full_data(
     let mut data: Option<FullCustomerData> = conn.query_first(query)?;
     if let Some(d) = &mut data {
         d.custom_fields = get_custom_fields(conn, &d.id, 0)?;
-        // let fields = conn.query::<(String, String, String), String>(format!(
-        //     "SELECT ty, display, value FROM custom_field_data
-        //     WHERE fields=0 AND id = '{}'",
-        //     d.id
-        // ))?;
-        // for (ty, display, value) in fields {
-        //     let ty = match ty.as_str() {
-        //         "0" => "texts",
-        //         "1" => "times",
-        //         "2" => "boxes",
-        //         _ => return Err(Response::unknown_err("意外错误，不可到达")),
-        //     };
-        //     d.custom_fields
-        //         .inner
-        //         .entry(ty.to_owned())
-        //         .or_default()
-        //         .push(Field { display, value });
-        // }
-        // for t in ["texts", "times", "boxes"] {
-        //     d.custom_fields.inner.entry(t.to_owned()).or_default();
-        // }
     }
     Ok(data)
 }
@@ -427,13 +396,12 @@ macro_rules! __convert {
             1 => {
                 let t = op::some!($local.checked_sub_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));
-                   (1, format!("a.finish_time >= '{}'", TIME::from(t).format(TimeFormat::YYYYMMDD)))
+                (1, format!("a.finish_time >= '{}'", TIME::from(t).format(TimeFormat::YYYYMMDD)))
             }
             2 => {
                 let t = op::some!($local.checked_add_days(Days::new($param.appointment));
                     ret Err(Response::invalid_value("天数错误")));
-                let n = $time.format(TimeFormat::HHMM);
-               (1, format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment >= '{} {n}')",
+               (1, format!("a.finish_time IS NULL AND (a.appointment >= '{}' AND a.appointment <= '{} 24:00:00')",
                     $time.format(TimeFormat::YYYYMMDD), TIME::from(t).format(TimeFormat::YYYYMMDD)))
             }
             _ => return Err(Response::invalid_value("ap错误"))

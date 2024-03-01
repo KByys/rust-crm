@@ -112,12 +112,13 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
     let user_id = parse_jwt_macro!(&bearer, &mut conn => true);
     check(&user_id, &id, &mut conn)?;
     let time = TIME::now()?;
+    let finish_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     conn.query_drop(format!(
         "UPDATE appointment SET finish_time = '{}' WHERE id = '{}' LIMIT 1",
-        time.format(TimeFormat::YYYYMMDD_HHMMSS),
+        finish_time,
         id
     ))?;
-    Ok(Response::empty())
+    Ok(Response::ok(json!(finish_time)))
 }
 #[derive(Debug, Serialize, FromRow)]
 struct AppointmentResponse {

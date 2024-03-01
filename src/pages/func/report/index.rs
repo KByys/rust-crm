@@ -210,6 +210,7 @@ struct Report {
     send_time: Option<String>,
     processing_time: Option<String>,
     opinion: String,
+    contents: String,
     /// 0 审批通过，1 审批未通过，其他值表示未审批
     status: i32,
 }
@@ -303,6 +304,7 @@ fn __query(conn: &mut PooledConn, params: &QueryParams, uid: &str) -> Result<Vec
             "opinion": row.opinion,
             "status": row.status,
             "cc": cc,
+            "contents": row.contents,
             "replies": replies
 
         }));

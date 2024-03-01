@@ -121,7 +121,7 @@ async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
     println!(
         "update report set status={status}, processing_time='{process_time}', opinion='{}' 
         WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL LIMIT 1",
-        data.id, data.opinion
+        data.opinion, data.id
     );
     conn.query_drop(format!(
         "update report set status={status}, processing_time='{process_time}', opinion='{}' 

@@ -122,9 +122,7 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
 #[derive(Debug, Serialize, FromRow)]
 struct AppointmentResponse {
     id: String,
-    #[serde(rename = "visitor")]
     salesman: String,
-    #[serde(rename = "visitor_name")]
     salesman_name: String,
     applicant: String,
     applicant_name: String,
@@ -137,8 +135,8 @@ struct AppointmentResponse {
 fn join_to_json(appoint: &AppointmentResponse, comments: &[Comment]) -> Value {
     json!({
         "id": appoint.id,
-        "salesman": appoint.salesman,
-        "salesman_name": appoint.salesman_name,
+        "visitor": appoint.salesman,
+        "visitor_name": appoint.salesman_name,
         "applicant": appoint.applicant,
         "applicant_name": appoint.applicant_name,
         "appointment": appoint.appointment,

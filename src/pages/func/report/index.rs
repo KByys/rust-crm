@@ -128,7 +128,7 @@ async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
         WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL LIMIT 1",
         data.id, data.opinion
     ))?;
-
+    conn.query_drop("COMMIT")?;
     Ok(Response::empty())
 }
 #[derive(Deserialize)]

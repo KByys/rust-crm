@@ -583,22 +583,5 @@ fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(),
         },
     )?;
     __update_custom_fields(conn, &params.custom_fields, 0, &params.id)?;
-    // for (k, v) in &params.custom_fields {
-    //     let ty = match k.as_str() {
-    //         "texts" => 0,
-    //         "times" => 1,
-    //         "boxes" => 2,
-    //         _ => return Err(Response::invalid_value("自定义字段错误")),
-    //     };
-    //     for f in v {
-    //         let state = format!(
-    //             "UPDATE custom_field_data SET value='{}'
-    //                 WHERE fields=0 AND ty={ty} AND display='{}' LIMIT 1",
-    //             f.value, f.display
-    //         );
-    //         println!("{}", state);
-    //         conn.query_drop(state)?;
-    //     }
-    // }
     Ok(())
 }

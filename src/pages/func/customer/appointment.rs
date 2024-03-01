@@ -20,6 +20,7 @@ use super::index::check_user_customer;
 pub fn appointment_router() -> Router {
     Router::new()
         .route("/customer/appointment/add", post(add_appointments))
+        .route("/customer/appointment/update", post(update_appointment))
         .route(
             "/customer/appointment/delete/:id",
             delete(delete_appointment),
@@ -38,7 +39,6 @@ pub fn appointment_router() -> Router {
 }
 #[derive(Debug, Deserialize)]
 struct InsertParams {
-
     #[serde(rename = "visitor")]
     salesman: String,
     customer: String,
@@ -115,11 +115,38 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
     let finish_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     conn.query_drop(format!(
         "UPDATE appointment SET finish_time = '{}' WHERE id = '{}' LIMIT 1",
-        finish_time,
-        id
+        finish_time, id
     ))?;
     Ok(Response::ok(json!(finish_time)))
 }
+#[derive(Deserialize)]
+struct UpdateParams {
+    id: String,
+    visitor: String,
+    appointment: String,
+    theme: String,
+    content: String,
+    #[allow(dead_code)]
+    #[serde(default)]
+    notify: bool,
+}
+
+async fn update_appointment(
+    header: HeaderMap,
+    Json(value): Json<serde_json::Value>,
+) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let data: UpdateParams = serde_json::from_value(value)?;
+    conn.query_drop(format!(
+        "update appointment set salesman='{}', appointment='{}', theme='{}', content='{}' 
+        where id='{}' and applicant='{}' limit 1",
+        data.visitor, data.appointment, data.theme, data.content, data.id, uid
+    ))?;
+    Ok(Response::empty())
+}
+
 #[derive(Debug, Serialize, FromRow)]
 struct AppointmentResponse {
     id: String,

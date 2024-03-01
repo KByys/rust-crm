@@ -116,19 +116,23 @@ async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ReadParams = serde_json::from_value(value)?;
+    let report: Report = 
+    conn.query_first(format!("select *, 1 as ac_name, 1 as applicant_name, 1 as reviewer_name from report where id ='{}'", data.id))?.unwrap();
+    if report.send_time.is_none() || report.processing_time.is_some() {
+        return Err(Response::dissatisfy("未发送或已审批"));
+    }
+    if report.reviewer != uid {
+        return Err(Response::permission_denied());
+    }
     let status = op::ternary!(data.ok => 0, 1);
     let process_time = TIME::now()?.format(TimeFormat::YYYYMMDD_HHMMSS);
-    println!(
+    let update = format!(
         "update report set status={status}, processing_time='{process_time}', opinion='{}' 
-        WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL LIMIT 1",
+        WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL and processing_time is NULL LIMIT 1",
         data.opinion, data.id
     );
-    conn.query_drop(format!(
-        "update report set status={status}, processing_time='{process_time}', opinion='{}' 
-        WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL LIMIT 1",
-        data.id, data.opinion
-    ))?;
-    conn.query_drop("COMMIT")?;
+    println!("{}", update);
+    conn.query_drop(update)?;
     Ok(Response::empty())
 }
 #[derive(Deserialize)]

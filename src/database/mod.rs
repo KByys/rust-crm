@@ -66,6 +66,35 @@ where
     }
     result
 }
+#[macro_export]
+macro_rules! commit_or_rollback {
+    (async $fn:expr, $conn:expr, $params:expr) => {{
+        $conn.query_drop("BEGIN")?;
+        match $fn($conn, $params).await {
+            Ok(_) => {
+                $conn.query_drop("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                $conn.query_drop("ROLLBACK")?;
+                Err(e)
+            }
+        }
+    }};
+    ($fn:expr, $conn:expr, $params:expr) => {{
+        $conn.query_drop("BEGIN")?;
+        match $fn($conn, $params) {
+            Ok(_) => {
+                $conn.query_drop("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                $conn.query_drop("ROLLBACK")?;
+                Err(e)
+            }
+        }
+    }};
+}
 
 pub fn _c_or_r_more<F, T, P>(f: F, conn: &mut PooledConn, param: T, more: P) -> Result<(), Response>
 where

@@ -120,7 +120,7 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let _: String  = op::some!(conn.query_first(
-        format!("select 1 from appointment where id = '{id}' and visitor='{uid}' LIMIT 1"))?;
+        format!("select 1 from appointment where id = '{id}' and salesman='{uid}' LIMIT 1"))?;
         ret Err(Response::permission_denied())
     );
     let time = TIME::now()?;

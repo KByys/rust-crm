@@ -159,10 +159,10 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
             if !verify_permissions(&u.role, "other", "company_staff_data", None).await {
                 return Err(Response::permission_denied());
             }
-            let users: Vec<User> = conn.query(format!(
-                "SELECT u.* FROM user u WHERE id != '{id}' AND NOT EXISTS 
+            let users: Vec<User> = conn.query(
+                "SELECT u.* FROM user u WHERE NOT EXISTS 
                    (SELECT 1 FROM leaver l WHERE l.id=u.id)"
-            ))?;
+            )?;
             let mut map: HashMap<String, Vec<User>> = HashMap::new();
             for u in users {
                 map.entry(u.department.clone()).or_default().push(u);
@@ -184,7 +184,7 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
             }
             let d = op::ternary!(depart.eq("my") => &u.department; &depart);
             let users: Vec<User> = conn.query(format!(
-                "SELECT u.* FROM user u WHERE u.department='{d}' AND id != '{id}' AND NOT EXISTS 
+                "SELECT u.* FROM user u WHERE u.department='{d}' AND NOT EXISTS 
                     (SELECT 1 FROM leaver l WHERE l.id=u.id)"
             ))?;
             vec![json!({

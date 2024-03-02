@@ -458,7 +458,7 @@ async fn __query_customer_list_data(
 
     let (salesman, department) =
         __convert!(params.salesman.as_str(), params.department, u, conn; auto);
-    let today = time.format(TimeFormat::YYYYMMDD_HHMM);
+    let today = time.format(TimeFormat::YYYYMMDD);
     let query = format!(
         "SELECT c.id, c.smartphone, c.name, c.company, 
         c.sex, c.ty, c.status, c.create_time, c.level, c.address, ex.salesman, COUNT(cou.id) as visited_count,

@@ -67,7 +67,7 @@ impl DepartmentGroup {
 }
 
 #[forbid(unused)]
-pub static CUSTOMER: [&str; 9] = [
+pub static CUSTOMER: [&str; 10] = [
     CustomerGroup::ACTIVATION,
     CustomerGroup::QUERY,
     CustomerGroup::ENTER_CUSTOMER_DATA,
@@ -77,6 +77,7 @@ pub static CUSTOMER: [&str; 9] = [
     CustomerGroup::TRANSFER_CUSTOMER,
     CustomerGroup::EXPORT_DATA,
     CustomerGroup::RELEASE_CUSTOMER,
+    CustomerGroup::ADD_APPOINT
 ];
 
 pub struct CustomerGroup;
@@ -91,6 +92,7 @@ impl CustomerGroup {
     pub const TRANSFER_CUSTOMER: &str = "transfer_customer";
     pub const EXPORT_DATA: &str = "export_data";
     pub const RELEASE_CUSTOMER: &str = "release_customer";
+    pub const  ADD_APPOINT: &str = "add_appoint";
 }
 #[forbid(unused)]
 pub static STOREHOUSE: [&str; 2] = [StorehouseGroup::ACTIVATION, StorehouseGroup::PRODUCT];

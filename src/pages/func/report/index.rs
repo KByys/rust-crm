@@ -161,7 +161,7 @@ async fn update_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseR
         data.id
     ))?;
     if let Some(r) = key {
-        if r.is_none() {
+        if r.is_some() {
             return Err(Response::dissatisfy("已批阅的报告无法修改"));
         }
     } else {

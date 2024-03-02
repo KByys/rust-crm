@@ -6,8 +6,11 @@ use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+// use crate::database::{c_or_r};
 use crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss;
 use crate::libs::TimeFormat;
+use crate::perm::action::CustomerGroup;
+use crate::perm::{get_role, verify_permissions};
 use crate::{
     bearer,
     database::get_conn,
@@ -15,7 +18,6 @@ use crate::{
     parse_jwt_macro, Response, ResponseResult,
 };
 
-use super::index::check_user_customer;
 
 pub fn appointment_router() -> Router {
     Router::new()
@@ -52,66 +54,75 @@ struct InsertParams {
     notify: bool,
 }
 
+// 安排业务员拜访客户需要验证权限
+// 修改和删除拜访需要拜访发起者
+// 完成拜访需要拜访者
+use crate::commit_or_rollback;
 async fn add_appointments(
     header: HeaderMap,
     Json(value): Json<serde_json::Value>,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let user_id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: Vec<InsertParams> = serde_json::from_value(value)?;
+    commit_or_rollback!(async __add_appoint, &mut conn, (&params, &uid))?;
+    Ok(Response::empty())
+}
+
+async fn __add_appoint(
+    conn: &mut PooledConn,
+    (params, uid): (&[InsertParams], &str),
+) -> Result<(), Response> {
+
+    let role = get_role(uid, conn)?;
+    let flag = verify_permissions(&role, "customer", CustomerGroup::ADD_APPOINT, None).await;
     for param in params {
         let time = TIME::now()?;
-        check_user_customer(&user_id, &param.customer, &mut conn)?;
+        if !param.salesman.eq(uid) && !flag {
+            return Err(Response::permission_denied());
+        }
         let id = gen_id(&time, &rand::random::<i32>().to_string());
         conn.query_drop(format!(
             "INSERT INTO appointment 
             (id, customer, applicant, salesman, appointment, finish_time, theme, content) VALUES (
                 '{}', '{}', '{}', '{}', '{}', NULL, '{}', '{}'
             )",
-            id,
-            param.customer,
-            user_id,
-            param.salesman,
-            param.appointment,
-            param.theme,
-            param.content
+            id, param.customer, uid, param.salesman, param.appointment, param.theme, param.content
         ))?;
     }
-    Ok(Response::empty())
+    Ok(())
 }
-fn check(id: &str, app: &str, conn: &mut PooledConn) -> Result<(), Response> {
-    let query = format!(
-        "SELECT 1 FROM user u
-        JOIN extra_customer_data ex ON ex.salesman=u.id
-         JOIN appointment ap ON ap.customer = ex.id
-         WHERE ap.id='{app}' AND u.id = '{id}' LIMIT 1"
-    );
-    println!("{}", query);
-    let flag: Option<String> = conn.query_first(query)?;
-    if flag.is_some() {
-        Ok(())
-    } else {
-        Err(Response::permission_denied())
-    }
-}
+
+
 async fn delete_appointment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let user_id = parse_jwt_macro!(&bearer, &mut conn => true);
-    check(&user_id, &id, &mut conn)?;
-    conn.query_drop(format!(
-        "DELETE FROM appointment WHERE id = '{}' LIMIT 1",
-        id,
-    ))?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    commit_or_rollback!(__delete_appointment, &mut conn, (&id, &uid))?;
     Ok(Response::empty())
 }
+
+fn __delete_appointment(conn: &mut PooledConn, (id, uid): (&str, &str)) -> Result<(), Response> {
+    let _: String  = op::some!(conn.query_first(
+        format!("select 1 from appointment where id = '{id}' and applicant='{uid}' LIMIT 1"))?;
+        ret Err(Response::permission_denied())
+    );
+    conn.query_drop(format!("delete from appointment where id = '{id}' limit 1"))?;
+    conn.query_drop(format!("delete from appoint_comment where appoint = '{id}'"))?;
+
+    Ok(())
+}
+
 
 async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let user_id = parse_jwt_macro!(&bearer, &mut conn => true);
-    check(&user_id, &id, &mut conn)?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let _: String  = op::some!(conn.query_first(
+        format!("select 1 from appointment where id = '{id}' and visitor='{uid}' LIMIT 1"))?;
+        ret Err(Response::permission_denied())
+    );
     let time = TIME::now()?;
     let finish_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     conn.query_drop(format!(
@@ -139,7 +150,12 @@ async fn update_appointment(
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    
     let data: UpdateParams = serde_json::from_value(value)?;
+    let _: String  = op::some!(conn.query_first(
+        format!("select 1 from appointment where id = '{}' and applicant='{uid}' LIMIT 1", data.id))?;
+        ret Err(Response::permission_denied())
+    );
     conn.query_drop(format!(
         "update appointment set salesman='{}', appointment='{}', theme='{}', content='{}' 
         where id='{}' and applicant='{}' limit 1",
@@ -279,5 +295,4 @@ async fn query_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseRes
         order by c.create_time"
     ))?;
     Ok(Response::ok(json!(comments)))
-
 }

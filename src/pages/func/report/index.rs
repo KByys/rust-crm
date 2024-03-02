@@ -173,8 +173,8 @@ async fn update_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseR
 
 fn __update_report(conn: &mut PooledConn, param: &UpdateParams) -> Result<(), Response> {
     conn.query_drop(format!(
-        "update report set ty={}, reviewer='{}', ac='{}', contents='{}'",
-        param.ty, param.reviewer, param.ac, param.contents
+        "update report set ty={}, reviewer='{}', ac='{}', contents='{}' where id ='{}' limit 1",
+        param.ty, param.reviewer, param.ac, param.contents, param.id
     ))?;
     conn.query_drop(format!("delete from report_cc where report='{}'", param.id))?;
     for cc in &param.cc {

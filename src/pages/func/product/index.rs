@@ -230,8 +230,11 @@ async fn query_product(Json(value): Json<Value>) -> ResponseResult {
     println!(
          "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"
     );
-    let products: Vec<ProductParams> = conn.query(format!(
+    let mut products: Vec<ProductParams> = conn.query(format!(
         "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"))?;
+    for product in &mut products {
+        product.custom_fields = get_custom_fields(&mut conn, &product.id, 1)?;
+    }
     println!("{:#?}", products);
     Ok(Response::ok(json!(products)))
 }

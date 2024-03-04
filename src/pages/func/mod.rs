@@ -94,7 +94,7 @@ pub fn __insert_custom_fields(
 ) -> Result<(), crate::Response> {
     let (texts, times, boxes) = unsafe {
         println!("{:#?}", STATIC_CUSTOM_FIELDS);
-        crate::pages::STATIC_CUSTOM_FIELDS.get_fields(0)
+        crate::pages::STATIC_CUSTOM_FIELDS.get_fields(ty as _)
     };
 
     let map: HashMap<&str, Vec<&str>> = [("texts", texts), ("times", times), ("boxes", boxes)]

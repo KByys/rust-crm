@@ -13,10 +13,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, commit_or_rollback, database::get_conn, libs::{
+    bearer, commit_or_rollback,
+    database::get_conn,
+    libs::{
         dser::{deser_empty_to_none, split_files},
         gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
-    }, pages::account::get_user, parse_jwt_macro, perm::{action::OtherGroup, verify_permissions}, response::BodyFile, Response, ResponseResult
+    },
+    pages::account::get_user,
+    parse_jwt_macro,
+    perm::{action::OtherGroup, verify_permissions},
+    response::BodyFile,
+    Response, ResponseResult,
 };
 
 pub fn sign_router() -> Router {
@@ -66,9 +73,10 @@ fn __add_sign(
         Some(files) => {
             let mut link = String::new();
             for f in files {
-                link.push_str(&format!("{}/", gen_file_link(&time, f.filename())))
+                link.push_str(&format!("{}&", gen_file_link(&time, f.filename())))
             }
             link.pop();
+            println!("{}", link);
             Some(link)
         }
         None => None,
@@ -94,8 +102,9 @@ fn __add_sign(
         },
     )?;
     if let Some(files) = file {
-        let links: Vec<_> = file_link.as_ref().expect("unreadable").split('-').collect();
-        let parent = format!("resources/sign/{}", id);
+        let links: Vec<_> = file_link.as_ref().expect("unreadable").split('&').collect();
+        let parent = format!("resources/sign/{}", uid);
+        println!("{}", parent);
         create_dir(&parent).unwrap_or(());
         for (i, f) in files.iter().enumerate() {
             std::fs::write(format!("{parent}/{}", links[i]), &f.bytes)?;
@@ -121,11 +130,12 @@ struct SignRecord {
     sign_time: String,
     customer: Option<String>,
     customer_name: Option<String>,
-    appoint: String,
+    appoint: Option<String>,
     #[serde(skip_serializing)]
     department: String,
     #[serde(serialize_with = "split_files")]
-    files: String,
+    #[serde(rename = "files")]
+    file: String,
     content: String,
 }
 
@@ -159,14 +169,15 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
             } else {
                 return Err(Response::permission_denied());
             };
-            let records: Vec<SignRecord> = conn
-            .query(format!(
+            let query = format!(
                 "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
                 where signer = '{id}' and s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time"
-            , param.start))?;
+            , param.start);
+            println!("{}", query);
+            let records: Vec<SignRecord> = conn.query(query)?;
             Ok(Response::ok(json!([json!({
                 "department": depart,
                 "data": records
@@ -185,14 +196,16 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
             {
                 let depart = ternary!(param.data.eq("my") => user.department, param.data);
 
-                let records: Vec<SignRecord> = conn.query(format!(
+                let query = format!(
                     "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time",
+                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time",
                     param.start
-                ))?;
+                );
+                println!("{}", query);
+                let records: Vec<SignRecord> = conn.query(query)?;
                 Ok(Response::ok(json!([json!({
                     "department": depart,
                     "data": records
@@ -215,7 +228,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time",
+                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time",
                     param.start
                 ))?;
                 let mut map: HashMap<String, Vec<SignRecord>> = HashMap::new();
@@ -242,12 +255,13 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
     }
 }
 
-
 async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let key: Option<Option<i32>> = conn.query_first(format!("select 1 from sign where id = '{id}' and signer = '{uid}' limit 1"))?;
+    let key: Option<Option<i32>> = conn.query_first(format!(
+        "select 1 from sign where id = '{id}' and signer = '{uid}' limit 1"
+    ))?;
     if let Some(Some(_)) = key {
         conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
         Ok(Response::empty())
@@ -256,12 +270,10 @@ async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> Respon
     }
 }
 
-
 async fn sign_img(header: HeaderMap, Path(id): Path<String>) -> Result<BodyFile, Response> {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    BodyFile::new_with_base64_url(format!("resources/sign/{uid}"), &id).map_err(|(code, msg)| {
-        Response::new(code, -1, json!(msg))
-    })
+    BodyFile::new_with_base64_url(format!("resources/sign/{uid}"), &id)
+        .map_err(|(code, msg)| Response::new(code, -1, json!(msg)))
 }

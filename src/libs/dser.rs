@@ -21,7 +21,7 @@ pub fn split_files<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer
 {
-     Serialize::serialize(&value.split('/').collect::<Vec<&str>>(), serializer)
+     Serialize::serialize(&value.split('&').collect::<Vec<&str>>(), serializer)
 }
 
 pub fn serialize_f32_to_string<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>

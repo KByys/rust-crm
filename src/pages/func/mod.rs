@@ -2,7 +2,7 @@ mod product;
 mod report;
 // mod report;
 mod sea;
-// mod sign;
+mod sign;
 use std::collections::HashMap;
 
 use axum::Router;
@@ -19,7 +19,7 @@ pub fn func_router() -> Router {
         .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
-    // .merge(sign::sign_router())
+    .merge(sign::sign_router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {

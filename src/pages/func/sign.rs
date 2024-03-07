@@ -1,256 +1,267 @@
+use std::{collections::HashMap, fs::create_dir};
+
 use axum::{
     extract::{Multipart, Path},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     routing::{delete, get, post},
     Json, Router,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use op::ternary;
-use rand::random;
-use regex::Regex;
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
 use crate::{
-    base64_encode, bearer,
-    common::empty_deserialize_to_none,
-    database::{ c_or_r, get_conn},
-    libs::{gen_id, parse_multipart, time::TIME, FilePart},
-    pages::account::get_user,
-    parse_jwt_macro,
-    perm::verify_permissions,
-    response::BodyFile,
-    Response, ResponseResult, ID,
+    bearer, commit_or_rollback, database::get_conn, libs::{
+        dser::{deser_empty_to_none, split_files},
+        gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
+    }, pages::account::get_user, parse_jwt_macro, perm::{action::OtherGroup, verify_permissions}, response::BodyFile, Response, ResponseResult
 };
 
-#[derive(Deserialize, Serialize, Default, FromRow)]
-pub struct SignRecord {
-    #[serde(default)]
-    id: String,
-    #[serde(default)]
-    signer: String,
-    #[serde(skip_deserializing)]
-    signer_name: String,
-    #[serde(deserialize_with = "deserialize_time")]
-    sign_time: String,
-    address: String,
-    location: String,
-    #[serde(deserialize_with = "empty_deserialize_to_none")]
-    customer: Option<String>,
-    #[serde(skip_deserializing)]
-    customer_name: Option<String>,
-    #[serde(skip_deserializing)]
-    file: String,
-    content: String,
-}
 pub fn sign_router() -> Router {
     Router::new()
-        .route("/sign/in", post(sign))
-        .route("/sign/in/json", post(sign_only_json))
+        .route("/sign/in", post(add_sign))
+        .route("/sign/in/json", post(add_sign_json))
         .route("/sign/records", post(query_sign_records))
-        .route("/sign/img/:img", get(get_file))
-        .route("/sign/delete", delete(delete_sign))
+        .route("/sign/delete/:id", delete(delete_sign_record))
+        .route("/sign/img/:id", get(sign_img))
 }
-pub fn deserialize_time<'de, D>(de: D) -> Result<String, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let regex = Regex::new(r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})").unwrap();
-    let s = String::deserialize(de)?;
-    if regex.is_match(&s) {
-        Ok(s)
-    } else {
-        Err(serde::de::Error::custom(
-            "Invalid Time Format. 时间格式应当为'YYYY-MM-DD HH:MM'",
-        ))
-    }
+
+#[derive(Debug, Deserialize)]
+struct InsertParams {
+    address: String,
+    location: String,
+    #[serde(deserialize_with = "deser_empty_to_none")]
+    customer: Option<String>,
+    #[serde(deserialize_with = "deser_empty_to_none")]
+    appoint: Option<String>,
+    content: String,
 }
-async fn sign_only_json(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+
+async fn add_sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let time = TIME::now()?;
-    let mut sign: SignRecord = serde_json::from_value(value)?;
-    sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
-    sign.signer = id;
-    conn.query_drop("BEGIN")?;
-    c_or_r_more(_insert, &mut conn, &sign, &[])?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let part = parse_multipart(part).await?;
+    let param = serde_json::from_str(&part.json)?;
+    commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, Some(&part.files)))?;
     Ok(Response::empty())
 }
 
-async fn sign(header: HeaderMap, part: Multipart) -> ResponseResult {
+async fn add_sign_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let data = parse_multipart(part).await?;
-    let time = TIME::now()?;
-    let mut sign: SignRecord = serde_json::from_str(&data.json)?;
-    sign.id = gen_id(&time, &base64_encode(random::<i32>().to_string()));
-    sign.signer = id;
-    let mut files = Vec::new();
-    for part in &data.files {
-        let id = gen_id(&time, part.filename.as_deref().unwrap_or("unknown.jpg"));
-        sign.file.push_str(&format!("{}&", id));
-        files.push((part, id));
-    }
-    sign.file.pop();
-    conn.query_drop("BEGIN")?;
-    c_or_r(_insert, &mut conn, (&sign, &files), false)?;
-    todo!()
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let param: InsertParams = serde_json::from_value(value)?;
+    commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, None))?;
+    Ok(Response::empty())
 }
-fn _insert(
+fn __add_sign(
     conn: &mut PooledConn,
-    data: &SignRecord,
-    files: &[(&FilePart, String)],
+    (uid, param, file): (&str, &InsertParams, Option<&[FilePart]>),
 ) -> Result<(), Response> {
+    let time = TIME::now()?;
+    let file_link = match file {
+        Some(files) => {
+            let mut link = String::new();
+            for f in files {
+                link.push_str(&format!("{}-", gen_file_link(&time, f.filename())))
+            }
+            link.pop();
+            Some(link)
+        }
+        None => None,
+    };
+    let id = gen_id(&time, "report");
     conn.exec_drop(
-        "INSERT INTO sign (id, signer, customer, address, sign_time, file, content)
-        VALUES (:id, :signer, :customer, :address, :sign_time, :file, :content)",
+        format!(
+            "insert into sign 
+            (id, signer, customer, address, appoint, location, sign_time, file, content)
+            values ('{id}', '{}', :customer, '{}', :appoint, '{}', '{}', :file, '{}'
+        )
+    ",
+            uid,
+            param.address,
+            param.location,
+            time.format(TimeFormat::YYYYMMDD_HHMMSS),
+            param.content
+        ),
         params! {
-            "id" => &data.id,
-            "signer" => &data.signer,
-            "customer" => &data.customer,
-            "address" => &data.address,
-            "location" => &data.location,
-            "sign_time" => &data.sign_time,
-            "file" => op::ternary!(files.is_empty() => "NULL"; &data.file),
-            "content" => &data.content,
+            "customer" => &param.customer,
+            "appoint" => &param.appoint,
+            "file" => &file_link
         },
     )?;
-    for (f, path) in files {
-        std::fs::write(format!("resources/sign/{path}"), &f.bytes)?;
+    if let Some(files) = file {
+        let links: Vec<_> = file_link.as_ref().expect("unreadable").split('-').collect();
+        let parent = format!("resources/sign/{}", id);
+        create_dir(&parent).unwrap_or(());
+        for (i, f) in files.iter().enumerate() {
+            std::fs::write(format!("{parent}/{}", links[i]), &f.bytes)?;
+        }
     }
     Ok(())
 }
-#[derive(serde::Deserialize)]
-struct Record {
-    #[serde(deserialize_with = "deserialize_date_range")]
-    date_range: (String, String),
-    scope: i32,
+#[derive(Debug, Deserialize)]
+struct QueryParams {
+    start: String,
+    end: String,
+    scope: u8,
     data: String,
 }
-fn deserialize_date_range<'de, D>(deser: D) -> Result<(String, String), D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let range = String::deserialize(deser)?;
-    let split_range: Vec<_> = range.splitn(2, '~').collect();
-    let regex = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
-    let captures = |i| regex.captures(split_range[i]).map(|s| s.extract::<3>().0);
-    let start = captures(0);
-    let end = captures(1);
-    Ok((
-        start.unwrap_or("0000-00-00").to_owned(),
-        end.unwrap_or("3000-00-00").to_owned(),
-    ))
+
+#[derive(Serialize, FromRow)]
+struct SignRecord {
+    id: String,
+    signer: String,
+    signer_name: String,
+    address: String,
+    location: String,
+    sign_time: String,
+    customer: Option<String>,
+    customer_name: Option<String>,
+    appoint: String,
+    #[serde(skip_serializing)]
+    department: String,
+    #[serde(serialize_with = "split_files")]
+    files: String,
+    content: String,
 }
 
-macro_rules! check_perm {
-    ($role:expr, $data:expr) => { {
-        let f = verify_permissions($role, "other", "query_sign_in", $data).await;
-        ternary!(f => (); return Err(Response::permission_denied()))
-
-    }
-    };
-}
-
-async fn query_sign_records(
-    header: HeaderMap,
-    Json(value): Json<serde_json::Value>,
-) -> ResponseResult {
+async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let data: Record = serde_json::from_value(value)?;
-    let user = get_user(&id, &mut conn)?;
-    let records = match data.scope {
-        // 个人签到记录
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn)?;
+    let param: QueryParams = serde_json::from_value(value)?;
+    let end = ternary!(param.end.is_empty() => "9999-99-99", &param.end);
+    match param.scope {
         0 => {
-            if user.id == data.data || data.data.is_empty() {
-                select_sign(&user.id, &mut conn)?
-            } else  {
-                let signer = get_user(&data.data, &mut conn)?;
-                if user.department == signer.department {
-                    check_perm!(&user.role, None)
+            let (id, depart) = if param.data.eq("my") || param.data.eq(&uid) {
+                (uid.clone(), user.department)
+            } else if verify_permissions(&user.role, "other", OtherGroup::QUERY_SIGN_IN, None).await
+            {
+                let other = get_user(&param.data, &mut conn)?;
+                if other.department.eq(&user.department)
+                    || verify_permissions(
+                        &user.role,
+                        "other",
+                        OtherGroup::QUERY_SIGN_IN,
+                        Some(&["all"]),
+                    )
+                    .await
+                {
+                    (other.id, other.department)
                 } else {
-                    check_perm!(&user.role, Some(&[&"all"]))
+                    return Err(Response::permission_denied());
                 }
-                select_sign(&data.data, &mut conn)?
-            }
-        }
-        // 部门签到记录
-        1 => {
-            if user.department == data.data {
-                check_perm!(&user.role, None)
             } else {
-                check_perm!(&user.role, Some(&[&"all"]))
+                return Err(Response::permission_denied());
+            };
+            let records: Vec<SignRecord> = conn
+            .query(format!(
+                "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
+                from sign s
+                join user sr on sr.id = s.signer
+                left join customer c on c.id = s.customer
+                where signer = '{id}' and s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time"
+            , param.start))?;
+            Ok(Response::ok(json!([json!({
+                "department": depart,
+                "data": records
+            })])))
+        }
+        1 => {
+            if verify_permissions(
+                &user.role,
+                "other",
+                OtherGroup::QUERY_SIGN_IN,
+                Some(&["all"]),
+            )
+            .await
+                || (verify_permissions(&user.role, "other", OtherGroup::QUERY_SIGN_IN, None).await
+                    && (param.data.eq("my") || param.data.eq(&user.department)))
+            {
+                let depart = ternary!(param.data.eq("my") => user.department, param.data);
+
+                let records: Vec<SignRecord> = conn.query(format!(
+                    "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
+                from sign s
+                join user sr on sr.id = s.signer
+                left join customer c on c.id = s.customer
+                where s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time",
+                    param.start
+                ))?;
+                Ok(Response::ok(json!([json!({
+                    "department": depart,
+                    "data": records
+                })])))
+            } else {
+                Err(Response::permission_denied())
             }
-            select_sign_with_depart(&data, &mut conn, &data.data)?
         }
-        // 全公司签到记录
         2 => {
-            check_perm!(&user.role, Some(&[&"all"]));
-            select_company_signs(&data, &mut conn)?
+            if verify_permissions(
+                &user.role,
+                "other",
+                OtherGroup::QUERY_SIGN_IN,
+                Some(&["all"]),
+            )
+            .await
+            {
+                let records: Vec<SignRecord> = conn.query(format!(
+                    "select s.*, sr.name as signer_name, c.name as customer_name, sr.department as department
+                from sign s
+                join user sr on sr.id = s.signer
+                left join customer c on c.id = s.customer
+                where s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time",
+                    param.start
+                ))?;
+                let mut map: HashMap<String, Vec<SignRecord>> = HashMap::new();
+                for record in records {
+                    map.entry(record.department.clone())
+                        .or_default()
+                        .push(record)
+                }
+                let data: Vec<Value> = map
+                    .into_iter()
+                    .map(|(k, v)| {
+                        json!({
+                            "department": k,
+                            "data": v
+                        })
+                    })
+                    .collect();
+                Ok(Response::ok(json!(data)))
+            } else {
+                Err(Response::permission_denied())
+            }
         }
-        _ => return Err(Response::invalid_value("scope数值不对")),
-    };
-    Ok(Response::ok(json!(records)))
+        _ => Err(Response::invalid_value("scope错误")),
+    }
 }
 
-fn select_sign(signer: &str, conn: &mut PooledConn) -> mysql::Result<Vec<SignRecord>> {
-    conn.query_map(
-        format!(
-            "SELECT DISTINCT s.*, u.name as signer_name, c.name as customer_name 
-            FROM sign s 
-            JOIN user ON u.id = s.signer
-            LEFT JOIN customer c ON c.id = s.customer
-            WHERE s.signer = '{signer}'"
-        ),
-        |r| r,
-    )
-}
-fn select_sign_with_depart(
-    r: &Record,
-    conn: &mut PooledConn,
-    depart: &str,
-) -> mysql::Result<Vec<SignRecord>> {
-    conn.query_map(
-        format!(
-            "SELECT s.*, u.name as signer_name, c.name as customer_name FROM sign s
-        JOIN user u ON u.department='{depart}' AND u.id = s.signer
-        LEFT JOIN customer c ON c.id = s.customer
-        WHERE sign_time >= '{}' AND sign_time <= '{}'
-        ORDER BY DESC s.sign_time",
-            r.date_range.0, r.date_range.1
-        ),
-        |r| r,
-    )
-}
 
-fn select_company_signs(r: &Record, conn: &mut PooledConn) -> mysql::Result<Vec<SignRecord>> {
-    conn.query_map(
-        format!(
-            "SELECT s.*, u.name as signer_name, c.name as customer_name FROM sign s
-        LEFT JOIN customer c ON c.id = s.customer
-        JOIN user u ON u.id = s.signer
-        WHERE s.sign_time >= '{}' AND s.sign_time <= '{}'
-        ORDER BY DESC s.sign_time",
-            r.date_range.0, r.date_range.1
-        ),
-        |r| r,
-    )
-}
-async fn get_file(Path(img): Path<String>) -> Result<BodyFile, (StatusCode, String)> {
-    BodyFile::new_with_base64_url("resourses/sign", &img)
-}
-
-async fn delete_sign(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
+async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let sign_id: ID = serde_json::from_value(value)?;
-    conn.query_drop(format!("DELETE sign WHERE id = '{}' AND signer = '{id}' LIMIT 1", sign_id.id))?;
-    Ok(Response::empty())
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let key: Option<Option<i32>> = conn.query_first(format!("select 1 from sign where id = '{id}' and signer = '{uid}' limit 1"))?;
+    if let Some(Some(_)) = key {
+        conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
+        Ok(Response::empty())
+    } else {
+        Err(Response::permission_denied())
+    }
 }
 
+
+async fn sign_img(header: HeaderMap, Path(id): Path<String>) -> Result<BodyFile, Response> {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    BodyFile::new_with_base64_url(format!("resources/sign/{uid}"), &id).map_err(|(code, msg)| {
+        Response::new(code, -1, json!(msg))
+    })
+}

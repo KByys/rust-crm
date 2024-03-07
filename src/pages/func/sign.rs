@@ -66,7 +66,7 @@ fn __add_sign(
         Some(files) => {
             let mut link = String::new();
             for f in files {
-                link.push_str(&format!("{}-", gen_file_link(&time, f.filename())))
+                link.push_str(&format!("{}/", gen_file_link(&time, f.filename())))
             }
             link.pop();
             Some(link)
@@ -135,7 +135,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn)?;
     let param: QueryParams = serde_json::from_value(value)?;
-    let end = ternary!(param.end.is_empty() => "9999-99-99", &param.end);
+    let end = ternary!(param.end.is_empty() => "9999-99-99 99:99:99".into(), format!("{} 99:99:99", param.end));
     match param.scope {
         0 => {
             let (id, depart) = if param.data.eq("my") || param.data.eq(&uid) {
@@ -165,7 +165,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where signer = '{id}' and s.sign_time >= '{}' and s.sign <= '{end}' order by sign_time"
+                where signer = '{id}' and s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time"
             , param.start))?;
             Ok(Response::ok(json!([json!({
                 "department": depart,

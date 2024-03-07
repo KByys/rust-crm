@@ -98,7 +98,7 @@ unsafe fn role_adm() -> PermissionGroupMap {
     });
     map.insert("other".into(), {
         let mut map = HashMap::new();
-        map.insert(OtherGroup::QUERY_CHECK_IN.to_owned(), vec![]);
+        map.insert(OtherGroup::QUERY_SIGN_IN.to_owned(), vec![]);
 
         map
     });

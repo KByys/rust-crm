@@ -77,7 +77,7 @@ pub static CUSTOMER: [&str; 10] = [
     CustomerGroup::TRANSFER_CUSTOMER,
     CustomerGroup::EXPORT_DATA,
     CustomerGroup::RELEASE_CUSTOMER,
-    CustomerGroup::ADD_APPOINT
+    CustomerGroup::ADD_APPOINT,
 ];
 
 pub struct CustomerGroup;
@@ -92,7 +92,7 @@ impl CustomerGroup {
     pub const TRANSFER_CUSTOMER: &str = "transfer_customer";
     pub const EXPORT_DATA: &str = "export_data";
     pub const RELEASE_CUSTOMER: &str = "release_customer";
-    pub const  ADD_APPOINT: &str = "add_appoint";
+    pub const ADD_APPOINT: &str = "add_appoint";
 }
 #[forbid(unused)]
 pub static STOREHOUSE: [&str; 2] = [StorehouseGroup::ACTIVATION, StorehouseGroup::PRODUCT];
@@ -141,7 +141,7 @@ impl FormGroup {
 
 #[forbid(unused)]
 pub static OTHER_GROUP: [&str; 5] = [
-    OtherGroup::QUERY_CHECK_IN,
+    OtherGroup::QUERY_SIGN_IN,
     OtherGroup::CUSTOM_FIELD,
     OtherGroup::DROP_DOWN_BOX,
     OtherGroup::SEA_RULE,
@@ -150,7 +150,7 @@ pub static OTHER_GROUP: [&str; 5] = [
 pub struct OtherGroup;
 
 impl OtherGroup {
-    pub const QUERY_CHECK_IN: &str = "query_sign_in";
+    pub const QUERY_SIGN_IN: &str = "query_sign_in";
     pub const CUSTOM_FIELD: &str = "custom_field";
     pub const DROP_DOWN_BOX: &str = "drop_down_box";
     pub const SEA_RULE: &str = "sea_rule";

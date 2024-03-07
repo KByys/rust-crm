@@ -5,7 +5,6 @@ use serde_json::{json, Value};
 use crate::{
     bearer,
     database::get_conn,
-    debug_info,
     perm::ROLES_GROUP_MAP,
     response::Response,
     token::{generate_jwt, parse_jwt, TokenVerification},

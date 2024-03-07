@@ -2,7 +2,7 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
 
-use crate::{pages::DROP_DOWN_BOX, perm::roles::ROLE_TABLES};
+use crate::perm::roles::ROLE_TABLES;
 
 pub fn deser_f32<'de, D>(de: D) -> Result<f32, D::Error>
 where
@@ -14,6 +14,14 @@ where
     } else {
         Err(serde::de::Error::custom("price不是浮点数格式"))
     }
+}
+
+
+pub fn split_files<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error> 
+where
+    S: Serializer
+{
+     Serialize::serialize(&value.split('-').collect::<Vec<&str>>(), serializer)
 }
 
 pub fn serialize_f32_to_string<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>

@@ -157,8 +157,9 @@ CREATE TABLE IF NOT EXISTS customer_colleague(
 CREATE TABLE IF NOT EXISTS sign(
     id VARCHAR(150) NOT NULL,
     signer VARCHAR(150) NOT NULL,
-    customer VARCHAR(150),
+    customer VARCHAR(150) NULL,
     address VARCHAR(150),
+    appoint VARCHAR(150) NULL,
     location VARCHAR(25),
     sign_time VARCHAR(25),
     file TEXT,
@@ -200,7 +201,7 @@ CREATE TABLE IF NOT EXISTS token(
 -- cover 封面的地址
 CREATE TABLE IF NOT EXISTS product(
     id VARCHAR(150) NOT NULL,
-    num VARCHAR(50) NOT NULL,
+    num VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(50) NOT NULL,
     specification VARCHAR(10) NOT NULL,
     cover VARCHAR(150) NULL,

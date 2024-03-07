@@ -259,15 +259,31 @@ async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> Respon
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let key: Option<Option<i32>> = conn.query_first(format!(
-        "select 1 from sign where id = '{id}' and signer = '{uid}' limit 1"
+    let key: Option<(i32, Option<String>)> = conn.query_first(format!(
+        "select 1, file from sign where id = '{id}' and signer = '{uid}' limit 1"
     ))?;
-    if let Some(Some(_)) = key {
-        conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
+    if let Some((_, f)) = key {
+        if let Some(file) = f {
+            commit_or_rollback!(__delete_sign_record, &mut conn, (&uid, &id, &file))?;
+        } else {
+            conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
+        }
         Ok(Response::empty())
     } else {
         Err(Response::permission_denied())
     }
+}
+
+fn __delete_sign_record(conn: &mut PooledConn, (uid, id, file): (&str, &str, &str)) -> Result<(), Response> {
+    conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
+    for f in file.split('&') {
+        ternary!(f.is_empty() => continue, ());
+        std::fs::remove_file(format!("resources/sign/{uid}/{f}"))?;
+    }
+    Ok(())
+
+
+
 }
 
 async fn sign_img(header: HeaderMap, Path(id): Path<String>) -> Result<BodyFile, Response> {

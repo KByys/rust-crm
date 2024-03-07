@@ -68,10 +68,11 @@ pub fn gen_id(time: &TIME, name: &str) -> String {
 
 pub fn gen_file_link(time: &TIME, name: &str) -> String {
     base64_encode(format!(
-        "{}\0{}?{}",
+        "{}\0{}?{}{}",
         name,
         time.naos() / 10000,
-        rand::random::<u8>()
+        rand::random::<u16>(),
+        rand::random::<u16>()
     ))
 }
 #[test]

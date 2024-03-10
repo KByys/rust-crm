@@ -295,7 +295,7 @@ fn __query(conn: &mut PooledConn, params: &QueryParams, uid: &str) -> Result<Vec
                 })
             },
         )?;
-        let replies = super::reply::__query_reply(conn, &row.id)?;
+        // let replies = super::reply::__query_reply(conn, &row.id)?;
         reports.push(json!({
             "id": row.id,
             "applicant": row.applicant,
@@ -314,7 +314,7 @@ fn __query(conn: &mut PooledConn, params: &QueryParams, uid: &str) -> Result<Vec
             "status": row.status,
             "cc": cc,
             "contents": row.contents,
-            "replies": replies
+            // "replies": replies
 
         }));
     }

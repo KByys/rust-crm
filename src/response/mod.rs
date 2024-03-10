@@ -182,15 +182,8 @@ impl BodyFile {
         url: &str,
     ) -> Result<Self, (StatusCode, String)> {
         let mut path = parent.as_ref().to_path_buf();
-        // let decode_bytes = base64_decode(url).map_err(|e| {
-        //     (
-        //         StatusCode::NOT_ACCEPTABLE,
-        //         format!("地址解析错误，具体信息为：{e}"),
-        //     )
-        // })?;
-        // // filename.xxx?3846956
-        // let decode_str = String::from_utf8_lossy(&decode_bytes).to_string();
         path.push(url);
+        println!("{}", path.display());
         if !path.is_file() {
             return Err((StatusCode::NOT_FOUND, "找不到该地址指向的文件".to_string()));
         }

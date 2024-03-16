@@ -132,7 +132,7 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
         )?.len(),
         _ => conn.query::<i32, String>(format!(
             "SELECT 1 FROM user u WHERE u.department='{}' AND NOT EXISTS 
-                (SELECT 1 FROM leaver l WHERE l.id=u.id) GROUP BY u.id",
+                (SELECT 1 FROM leaver l WHERE l.id=u.id)",
             op::ternary!(depart.eq("my")
             => &u.department; &depart)
         ))?.len(),

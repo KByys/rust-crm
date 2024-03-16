@@ -125,19 +125,19 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn)?;
-    let count: Option<u32> = match depart.as_str() {
-        "all" => conn.query_first(
-            "SELECT COUNT(u.id) FROM user u WHERE NOT EXISTS 
-                (SELECT 1 FROM leaver l WHERE l.id=u.id) GROUP BY u.id",
-        )?,
-        _ => conn.query_first(format!(
-            "SELECT COUNT(u.id) FROM user u WHERE u.department='{}' AND NOT EXISTS 
+    let count: usize = match depart.as_str() {
+        "all" => conn.query::<i32, &str>(
+            "SELECT 1 FROM user u WHERE NOT EXISTS 
+                (SELECT 1 FROM leaver l WHERE l.id=u.id)",
+        )?.len(),
+        _ => conn.query::<i32, String>(format!(
+            "SELECT 1 FROM user u WHERE u.department='{}' AND NOT EXISTS 
                 (SELECT 1 FROM leaver l WHERE l.id=u.id) GROUP BY u.id",
             op::ternary!(depart.eq("my")
             => &u.department; &depart)
-        ))?,
+        ))?.len(),
     };
-    Ok(Response::ok(json!(count.unwrap_or(0))))
+    Ok(Response::ok(json!(count)))
 }
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {

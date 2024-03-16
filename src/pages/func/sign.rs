@@ -129,6 +129,7 @@ struct SignRecord {
     address: String,
     location: String,
     sign_time: String,
+    company: Option<String>,
     customer: Option<String>,
     customer_name: Option<String>,
     appoint: Option<String>,
@@ -168,7 +169,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 return Err(Response::permission_denied());
             };
             let query = format!(
-                "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
+                "select s.*, sr.name as signer_name, c.name as customer_name, c.company, 1 as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
@@ -196,7 +197,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 let depart = ternary!(param.data.eq("my") => user.department, param.data);
 
                 let query = format!(
-                    "select s.*, sr.name as signer_name, c.name as customer_name, 1 as department
+                    "select s.*, sr.name as signer_name, c.name as customer_name, c.company, 1 as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
@@ -221,7 +222,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 Some(["all"].as_slice())
             ) {
                 let records: Vec<SignRecord> = conn.query(format!(
-                    "select s.*, sr.name as signer_name, c.name as customer_name, sr.department as department
+                    "select s.*, sr.name as signer_name, c.name as customer_name, c.company, sr.department as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer

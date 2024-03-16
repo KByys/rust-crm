@@ -16,8 +16,8 @@ use crate::{
         func::{__update_custom_fields, get_custom_fields},
     },
     parse_jwt_macro,
-    perm::{action::CustomerGroup, verify_permissions},
-    Field, Response, ResponseResult,
+    perm::action::CustomerGroup,
+    verify_perms, Field, Response, ResponseResult,
 };
 
 pub fn customer_router() -> Router {
@@ -33,20 +33,6 @@ use crate::libs::dser::{
     serialize_null_to_default,
 };
 
-// pub static mut STATIC_CUSTOMER_LEVEL: CustomerLevel = CustomerLevel::new();
-// pub struct CustomerLevel {
-//     inner: Option<HashMap<String, String>>,
-// }
-// impl CustomerLevel {
-//     pub const fn new() -> Self {
-//         CustomerLevel { inner: None }
-//     }
-//     pub fn init(&mut self) {
-//         let buf = std::fs::read_to_string("data/level").expect("读取配置文件data/level失败");
-//         let map = serde_json::from_str(&buf).expect("配置文件data/level已遭到损坏");
-//         self.inner = Some(map);
-//     }
-// }
 
 #[derive(Serialize, Deserialize, Debug, FromRow)]
 pub struct Customer {
@@ -77,6 +63,8 @@ pub struct Customer {
     ty: String,
     tag: String,
     pub salesman: Option<String>,
+    #[serde(default)]
+    salesman_name: Option<String>,
     pub visited_count: usize,
     #[serde(serialize_with = "serialize_null_to_default")]
     pub next_visit_time: Option<String>,
@@ -91,7 +79,6 @@ pub struct Customer {
     pub custom_fields: CustomCustomerData,
 }
 
-
 #[derive(Serialize, Debug, FromRow)]
 pub struct ListData {
     id: String,
@@ -99,6 +86,7 @@ pub struct ListData {
     name: String,
     company: String,
     salesman: Option<String>,
+    salesman_name: Option<String>,
     level: String,
     #[serde(serialize_with = "serialize_null_to_default")]
     next_visit_time: Option<String>,
@@ -227,14 +215,6 @@ struct InsertParams {
     salesman: Option<String>,
     custom_fields: HashMap<String, Vec<Field>>,
 }
-// fn check_user_exists(conn: &mut PooledConn, id: &str) -> Result<bool, Response> {
-//     Ok(conn
-//         .query_first::<String, String>(format!(
-//             "SELECT 1 FROM user u WHERE u.id = '{id}' AND
-//             NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"
-//         ))?
-//         .is_some())
-// }
 
 async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
@@ -247,14 +227,11 @@ async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
         user.name, user.smartphone, params
     );
 
-    if !verify_permissions(
+    if !verify_perms!(
         &user.role,
-        "customer",
-        CustomerGroup::ENTER_CUSTOMER_DATA,
-        None,
-    )
-    .await
-    {
+        CustomerGroup::NAME,
+        CustomerGroup::ENTER_CUSTOMER_DATA
+    ) {
         return Err(Response::permission_denied());
     }
 
@@ -313,6 +290,7 @@ struct FullCustomerData {
     ty: String,
     tag: String,
     pub salesman: Option<String>,
+    pub salesman_name: Option<String>,
     pub visited_count: usize,
     #[serde(serialize_with = "serialize_null_to_default")]
     pub next_visit_time: Option<String>,
@@ -333,9 +311,11 @@ fn __query_full_data(
         "SELECT DISTINCT c.*, ex.salesman, ex.last_transaction_time, 
             MIN(app.appointment) as next_visit_time, COUNT(cou.id) as visited_count,
             MAX(cou.appointment) as last_visited_time, 1 as custom_fields,
+            uu.name as salesman_name,
             1 as colleagues
-             FROM customer c 
+            FROM customer c 
             JOIN extra_customer_data ex ON ex.id = c.id 
+            JOIN user uu ON uu.id = ex.salesman 
             LEFT JOIN appointment app ON app.customer = c.id AND app.salesman=ex.salesman
                 AND app.appointment > '{today}' AND app.finish_time IS NULL
             LEFT JOIN appointment cou ON cou.customer = c.id AND cou.salesman=ex.salesman
@@ -411,14 +391,14 @@ macro_rules! __convert {
     ($sales:expr, $depart:expr, $u:expr, $conn:expr; auto) => {
         if $sales.is_empty() {
             if !$depart.is_empty() {
-                if ($depart.eq(&$u.department) && verify_permissions(&$u.role, "customer", "query", None).await) ||
-                    verify_permissions(&$u.role, "customer", "query", Some(&["all"])).await {
-                        ("IS NOT NULL".to_owned(), format!("='{}'", $depart))
-                } else{
+                let (depart, root) = verify_perms!(&$u.role, CustomerGroup::NAME, CustomerGroup::QUERY, None, Some(["all"].as_slice()));
+                if root || (($depart.eq(&$u.department) || $depart.eq("my")) && depart) {
+                    ("IS NOT NULL".to_owned(), format!("='{}'", op::ternary!($depart.eq("my") => $u.department.as_str(), $depart.as_str())))
+                } else {
                     return Err(Response::permission_denied())
                 }
             } else {
-                if verify_permissions(&$u.role, "customer", "query", Some(&["all"])).await {
+                if verify_perms!(&$u.role, CustomerGroup::NAME, CustomerGroup::QUERY, Some(["all"].as_slice())) {
                     ("IS NOT NULL".to_owned(), "IS NOT NULL".to_owned())
                 } else{
                     return Err(Response::permission_denied())
@@ -428,9 +408,10 @@ macro_rules! __convert {
             (format!("='{}'", $u.id), "IS NOT NULL".to_owned())
         } else {
             let sl = get_user($sales, $conn)?;
-            if (sl.department.eq(&$u.department) && verify_permissions(&$u.role, "customer", "query", None).await) ||
-                verify_permissions(&$u.role, "customer", "query", Some(&["all"])).await {
-                    (format!("='{}'", $sales), "IS NOT NULL".to_owned())
+
+            let (depart, root) = verify_perms!(&$u.role, CustomerGroup::NAME, CustomerGroup::QUERY, None, Some(["all"].as_slice()));
+            if root || (sl.department.eq(&$u.department) && depart) {
+                (format!("='{}'", $sales), "IS NOT NULL".to_owned())
             } else{
                 return Err(Response::permission_denied())
             }
@@ -462,6 +443,7 @@ async fn __query_customer_list_data(
     let query = format!(
         "SELECT c.id, c.smartphone, c.name, c.company, 
         c.sex, c.ty, c.status, c.create_time, c.level, c.address, ex.salesman, COUNT(cou.id) as visited_count,
+        u.name as salesman_name,
         MAX(cou.finish_time) AS last_visited_time,
         ex.last_transaction_time, MIN(app.appointment) as next_visit_time
         FROM customer c JOIN extra_customer_data ex ON ex.id=c.id AND (ex.salesman {salesman}) 
@@ -475,7 +457,7 @@ async fn __query_customer_list_data(
         "
     );
     println!("{}", query);
-    let list = conn.query_map(query, |data| data)?;
+    let list = conn.query(query)?;
     Ok(list)
 }
 
@@ -543,7 +525,7 @@ async fn update_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
         user.name, user.smartphone, params
     );
     check_user_customer(&id, &params.id, &mut conn)?;
-    if !verify_permissions(&user.role, "customer", "update_customer_data", None).await {
+    if !verify_perms!(&user.role, CustomerGroup::NAME, CustomerGroup::UPDATE_CUSTOMER_DATA) {
         return Err(Response::permission_denied());
     }
 

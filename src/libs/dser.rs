@@ -2,7 +2,7 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::Display;
 
-use crate::perm::roles::ROLE_TABLES;
+use crate::{pages::DROP_DOWN_BOX, perm::roles::ROLE_TABLES};
 
 pub fn deser_f32<'de, D>(de: D) -> Result<f32, D::Error>
 where
@@ -16,12 +16,16 @@ where
     }
 }
 
-
-pub fn split_files<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error> 
+pub fn split_files<S>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
 where
-    S: Serializer
+    S: Serializer,
 {
-     Serialize::serialize(&value.split('&').collect::<Vec<&str>>(), serializer)
+    let split = if let Some(value) = value {
+        value.split('&').collect::<Vec<&str>>()
+    } else {
+        Vec::new()
+    };
+    Serialize::serialize(&split, serializer)
 }
 
 pub fn serialize_f32_to_string<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
@@ -106,6 +110,23 @@ where
     serializer.serialize_str(&name)
 }
 
+pub fn deserialize_storehouse<'de, D>(de: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let name: String = Deserialize::deserialize(de)?;
+    unsafe {
+        let flag = DROP_DOWN_BOX
+            .map()
+            .get("storehouse")
+            .map_or(false, |k| k.contains_key(&name));
+        if flag {
+            Ok(name)
+        } else {
+            Err(serde::de::Error::custom("库房不匹配"))
+        }
+    }
+}
 pub fn deserialize_role<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,

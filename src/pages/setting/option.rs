@@ -63,7 +63,9 @@ struct OptionValue {
     delete_value: String,
     next_value: String,
 }
-use crate::perm::{action::OtherGroup, verify_permissions};
+use crate::verify_perms;
+
+use crate::perm::action::OtherGroup;
 macro_rules! parse_option {
     ($headers:expr, $value:expr, $begin:expr) => {
         {
@@ -72,7 +74,7 @@ macro_rules! parse_option {
             let id = parse_jwt_macro!(&bearer, &mut conn => true);
 
             let role: String = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));
-            if !role.eq("root") && !verify_permissions(&role, "other", OtherGroup::DROP_DOWN_BOX, None).await {
+            if !verify_perms!(&role, OtherGroup::NAME, OtherGroup::DROP_DOWN_BOX) {
                 return Err(Response::permission_denied())
             }
 
@@ -119,21 +121,11 @@ pub async fn insert_options(headers: HeaderMap, Json(value): Json<Value>) -> Res
     ))?;
     unsafe {
         if let Some(k) = level_key {
-            // op::some!(DROP_DOWN_BOX.map_mut().get_mut("customer_level");
-            //             ret Err(Response::unknown_err("错误代码：1000")))
-            // .remove_entry(&k);
             conn.query_drop(format!(
                 "DELETE FROM drop_down_box WHERE name='customer_level' AND value='{k}' LIMIT 1"
             ))?;
         }
         DROP_DOWN_BOX.init(&mut conn)?;
-        // if !DROP_DOWN_BOX.contains(name, &value) {
-        //     DROP_DOWN_BOX
-        //         .map_mut()
-        //         .entry(name.to_string())
-        //         .or_default()
-        //         .insert(value, time.format(TimeFormat::YYYYMMDD_HHMMSS));
-        // }
     }
     Ok(Response::empty())
 }
@@ -181,16 +173,6 @@ impl DropDownBox {
         if let Some(values) = self.map_mut().get_mut(name) {
             values.remove_entry(value);
         }
-        // let mut index = 0;
-        // while index < self.inner.len() {
-        //     let data = &self.inner[index];
-        //     if data.0.eq(name) && data.1.eq(value) {
-        //         self.inner.remove(index);
-        //         break;
-        //     } else {
-        //         index += 1;
-        //     }
-        // }
     }
 
     pub fn contains(&self, name: &str, value: &str) -> bool {
@@ -213,30 +195,6 @@ impl DropDownBox {
             })
             .unwrap_or_default()
     }
-    // pub fn update(&mut self, name: &str, old_value: &str, new_value: &str) {
-    //     // for item in &mut self.inner {
-    //     //     if item.0.eq(name) && item.1.eq(old_value) {
-    //     //         item.1 = new_value.to_owned();
-    //     //         break;
-    //     //     }
-    //     // }
-    //     if let Some(values) = self.map_mut().get_mut(name) {
-    //         if let Some((_k, v)) = values.remove_entry(old_value) {
-    //             values.insert(new_value.to_owned(), v);
-    //         } else {
-    //             dbg!("下拉字段未匹配");
-    //             panic!("测试")
-    //         }
-    //     }
-    // }
-
-    // pub fn get_all(&self) -> Vec<Vec<&(String, String, String)>> {
-    //     let mut data = Vec::new();
-    //     for n in DROP_DOWN_BOX_ALL {
-    //         data.push(self.get(n));
-    //     }
-    //     data
-    // }
 }
 
 struct Level {
@@ -345,14 +303,14 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
         new_value, param.info.old_value, name
     ))?;
     unsafe {
-        // DROP_DOWN_BOX.update(name, &param.info.old_value, &new_value);
         DROP_DOWN_BOX.init(conn)?;
         println!("{:#?}", DROP_DOWN_BOX);
     }
     Ok(())
 }
 
-pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) 
+-> ResponseResult {
     let (id, mut conn, info) = parse_option!(headers, value, true);
     debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:#?}", id, info));
     let name = *get_drop_down_box!(info.ty);
@@ -400,14 +358,6 @@ pub async fn query_option_value() -> ResponseResult {
             .iter()
             .enumerate()
             .map(|(i, k)| {
-                // let info = if let Some(v) = DROP_DOWN_BOX.map().get(*k) {
-                //     let mut info: Vec<_> = v.iter().collect();
-                //     info.sort_by(|v1, v2| v1.1.cmp(v2.1));
-                //     info.iter().map(|(k, _)| k.to_string()).collect()
-                // } else {
-                //     Vec::new()
-                // };
-
                 json!({
                     "ty": i,
                     "info": DROP_DOWN_BOX.get(k)

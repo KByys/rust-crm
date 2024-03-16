@@ -1,14 +1,9 @@
 use axum::{http::HeaderMap, Json};
-use mysql::prelude::Queryable;
+use mysql::{prelude::Queryable, PooledConn};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer,
-    database::get_conn,
-    perm::ROLES_GROUP_MAP,
-    response::Response,
-    token::{generate_jwt, parse_jwt, TokenVerification},
-    ResponseResult,
+    bearer, database::get_conn, libs::headers::Bearer, perm::ROLES_GROUP_MAP, response::Response, token::{generate_jwt, parse_jwt, TokenVerification}, ResponseResult
 };
 
 use super::User;
@@ -22,7 +17,15 @@ struct LoginID {
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
-        let token = match parse_jwt(&bearer) {
+        verify_login_token(&bearer, &mut conn).await
+    } else {
+        verify_password(value, &mut conn).await
+    }
+}
+
+async fn verify_login_token(bearer: &Bearer, conn: &mut PooledConn) -> ResponseResult {
+
+        let token = match parse_jwt(bearer) {
             Some(token) if !token.sub => {
                 return Err(Response::token_error("客户账号无法进行员工登录"))
             }
@@ -37,7 +40,7 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
             return Err(Response::token_error("token已过期，无法刷新，请重新登录"));
         }
 
-        match token.verify(&mut conn)? {
+        match token.verify(conn)? {
             TokenVerification::Ok => {
                 let user: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", token.id))?; ret Err(Response::not_exist("用户不存在")));
                 // println!("role is {}", user.role);
@@ -72,7 +75,9 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
             }
             TokenVerification::Error => Err(Response::token_error("Invalid token")),
         }
-    } else {
+}
+async fn verify_password(value: Value, conn: &mut PooledConn) -> ResponseResult {
+
         let user: LoginID = serde_json::from_value(value)?;
         let digest = md5::compute(&user.password);
         let info: Option<User> = conn.query_first(format!(
@@ -103,7 +108,6 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
                 user.smartphone
             )))
         }
-    }
 }
 
 // pub async fn customer_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {

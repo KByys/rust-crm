@@ -2,7 +2,11 @@ pub mod roles;
 use std::collections::HashMap;
 
 use crate::{
-    bearer, database::get_conn, parse_jwt_macro, perm::roles::ROLE_TABLES, Response, ResponseResult,
+    bearer,
+    database::get_conn,
+    parse_jwt_macro,
+    perm::{action::groups, roles::ROLE_TABLES},
+    Response, ResponseResult,
 };
 use axum::{http::HeaderMap, routing::post, Router};
 use mysql::{prelude::Queryable, PooledConn};
@@ -11,10 +15,12 @@ use tokio::sync::Mutex;
 pub type PermissionGroupMap = HashMap<String, HashMap<String, Vec<String>>>;
 pub type PermissionMap = HashMap<String, Vec<String>>;
 #[allow(elided_lifetimes_in_associated_constant)]
-// #[forbid(unused)]
+#[forbid(unused)]
 pub(crate) mod action;
-
 lazy_static::lazy_static! {
+    pub static ref PERMISSION_GROUPS: HashMap<&'static str, Vec<&'static str>> = {
+        groups()
+    };
     pub static ref ROLES_GROUP_MAP: Mutex<HashMap<String, PermissionGroupMap>> = {
         let map = if let Ok(bytes) = std::fs::read("data/perm") {
             serde_json::from_slice(&bytes).expect("权限文件结构遭到破坏，请联系开发人员进行修复")
@@ -22,6 +28,7 @@ lazy_static::lazy_static! {
             let mut map = HashMap::new();
             map.insert("salesman".to_owned(), role_salesman());
             map.insert("admin".to_owned(), unsafe { role_adm() });
+            map.insert("manager".to_owned(), unsafe { role_manager() });
 
             std::fs::write("data/perm", json!(map.clone()).to_string().as_bytes()).expect("写入权限文件失败");
             map
@@ -39,89 +46,160 @@ pub async fn update_role_map(role: &str, perms: PermissionGroupMap) -> Result<()
     Ok(())
 }
 fn role_salesman() -> PermissionGroupMap {
-    let mut map = HashMap::new();
     use action::*;
-    map.insert("customer".to_string(), {
-        CUSTOMER
-            .iter()
-            .filter_map(|f| {
-                if matches!(
-                    *f,
-                    CustomerGroup::EXPORT_DATA
-                        | CustomerGroup::RELEASE_CUSTOMER
-                        | CustomerGroup::TRANSFER_CUSTOMER
-                ) {
-                    None
-                } else {
-                    Some((f.to_string(), vec![]))
-                }
-            })
+    [(
+        CustomerGroup::NAME,
+        [
+            (CustomerGroup::ACTIVATION, vec![]),
+            (CustomerGroup::ENTER_CUSTOMER_DATA, vec![]),
+            (CustomerGroup::UPDATE_CUSTOMER_DATA, vec![]),
+            (CustomerGroup::ACTIVATION, vec![]),
+        ]
+        .into_iter()
+        .map(|(name, key)| (name.to_owned(), key))
+        .collect(),
+    )]
+    .into_iter()
+    .map(|(name, key)| (name.to_owned(), key))
+    .collect()
+}
+
+unsafe fn role_manager() -> PermissionGroupMap {
+    use action::*;
+    [
+        (
+            RoleGroup::NAME,
+            [
+                (RoleGroup::CREATE, vec![]),
+                (RoleGroup::UPDATE, vec!["all".to_owned()]),
+                (RoleGroup::DELETE, vec!["all".to_owned()]),
+                (RoleGroup::CHANGE_ROLE, vec!["all".to_owned()]),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect(),
+        ),
+        (
+            CustomerGroup::NAME,
+            CUSTOMER
+                .iter()
+                .map(|x| {
+                    if matches!(
+                        *x,
+                        CustomerGroup::EXPORT_DATA
+                            | CustomerGroup::QUERY_PUB_SEA
+                            | CustomerGroup::QUERY
+                    ) {
+                        (x.to_string(), vec!["all".to_owned()])
+                    } else {
+                        (x.to_string(), vec![])
+                    }
+                })
+                .collect(),
+        ),
+        (AccountGroup::NAME, {
+            [
+                (
+                    AccountGroup::CREATE,
+                    vec!["all_department".to_owned(), "all".to_owned()],
+                ),
+                (
+                    AccountGroup::DELETE,
+                    vec!["all_department".to_owned(), "all".to_owned()],
+                ),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
             .collect()
-    });
-    map
+        }),
+        (StorehouseGroup::NAME, {
+            [
+                (StorehouseGroup::ACTIVATION, vec![]),
+                (StorehouseGroup::ADD_PRODUCT, vec![]),
+                (StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY, vec![]),
+                (StorehouseGroup::DELETE_PRODUCT, vec![]),
+                (StorehouseGroup::UPDATE_PRODUCT, vec![]),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect()
+        }),
+        (OtherGroup::NAME, {
+            [
+                (OtherGroup::QUERY_SIGN_IN, vec!["all".to_owned()]),
+                (OtherGroup::SEA_RULE, vec!["all".to_owned()]),
+                (OtherGroup::COMPANY_STAFF_DATA, vec!["all".to_owned()]),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect()
+        }),
+    ]
+    .into_iter()
+    .map(|(perm, key)| (perm.to_owned(), key))
+    .collect()
 }
 
 unsafe fn role_adm() -> PermissionGroupMap {
     use action::*;
-    let mut map = HashMap::new();
-    map.insert(
-        "customer".to_string(),
-        CUSTOMER.iter().map(|x| (x.to_string(), vec![])).collect(),
-    );
-    map.insert("account".to_owned(), {
-        let mut map = HashMap::new();
-        map.insert(
-            AccountGroup::CREATE.to_owned(),
-            vec![ROLE_TABLES.get_name_uncheck("salesman")],
-        );
-        map.insert(
-            AccountGroup::DELETE.to_owned(),
-            vec![ROLE_TABLES.get_name_uncheck("salesman")],
-        );
-        map
-    });
-    map.insert("approval".to_owned(), {
-        let mut map = HashMap::new();
-        map.insert(ApprovalGroup::RECEIVE_APPROVAL.to_owned(), vec![]);
-        map.insert(ApprovalGroup::QUERY_APPROVAL.to_owned(), vec![]);
-
-        map
-    });
-    map.insert("storehouse".to_owned(), {
-        let mut map = HashMap::new();
-        map.insert(StorehouseGroup::ACTIVATION.to_owned(), vec![]);
-        map.insert(
-            StorehouseGroup::PRODUCT.to_owned(),
-            vec!["create".into(), "update".into(), "delete".into()],
-        );
-        map
-    });
-    map.insert("other".into(), {
-        let mut map = HashMap::new();
-        map.insert(OtherGroup::QUERY_SIGN_IN.to_owned(), vec![]);
-
-        map
-    });
-    map
+    [
+        (
+            CustomerGroup::NAME,
+            CUSTOMER
+                .iter()
+                .map(|x| {
+                    if *x == CustomerGroup::EXPORT_DATA {
+                        (x.to_string(), vec!["department".to_owned()])
+                    } else {
+                        (x.to_string(), vec![])
+                    }
+                })
+                .collect(),
+        ),
+        (AccountGroup::NAME, {
+            [
+                (
+                    AccountGroup::CREATE,
+                    vec![ROLE_TABLES.get_name_uncheck("salesman")],
+                ),
+                (
+                    AccountGroup::DELETE,
+                    vec![ROLE_TABLES.get_name_uncheck("salesman")],
+                ),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect()
+        }),
+        (StorehouseGroup::NAME, {
+            [
+                (StorehouseGroup::ACTIVATION, vec![]),
+                (StorehouseGroup::ADD_PRODUCT, vec![]),
+                (StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY, vec![]),
+                (StorehouseGroup::UPDATE_PRODUCT, vec![]),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect()
+        }),
+        (OtherGroup::NAME, {
+            [
+                (OtherGroup::QUERY_SIGN_IN, vec![]),
+                (OtherGroup::SEA_RULE, vec![]),
+            ]
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), key))
+            .collect()
+        }),
+    ]
+    .into_iter()
+    .map(|(perm, key)| (perm.to_owned(), key))
+    .collect()
 }
 
 pub fn perm_router() -> Router {
     Router::new().route("/get/perm", post(get_perm))
 }
-// id-name, mysql
-// pub async fn check_permissions(role: &str, conn: &mut PooledConn) -> Result<(), Response> {
-//     let mut role_maps = ROLES_GROUP_MAP.lock().await;
-//     if role_maps.get(role).is_some() {
-//         let path = op::some!(
-//             conn.query_first::<String, String>(format!("SELECT perm FROM role WHERE role = '{role}'"))?; ret Err(Response::unknown_err("错误代码：perm_read: 10, 不应该发生")));
-//         let data = tokio::fs::read(&path).await?;
-//         let map = serde_json::from_slice(&data).map_err(|_| {
-//             Response::internal_server_error("内部文件遭到损坏，请联系开发人员进行修复")
-//         })?;
-//         role_maps.insert(role.to_owned(), map);
-//     }
-//     Ok(())
-// }
 
 pub async fn verify_permissions(
     role: &str,
@@ -141,6 +219,98 @@ pub async fn verify_permissions(
             data.map_or(true, |d| d.iter().all(|k| v.contains(&k.to_string())))
         })
 }
+#[macro_export]
+macro_rules! verify_perms {
+    ($role:expr, $perm:expr, $(($action:expr, $data:expr)), +) => {
+        if !$role.eq("root") {
+            let role_perm_maps = $crate::perm::ROLES_GROUP_MAP.lock().await;
+            $(
+                match op::catch!(role_perm_maps.get($role)?.get($perm)?.get($action)) {
+                    Some(v) => {
+                            if let Some::<&[&str]>(d) = $data {
+                                d.iter().all(|k| v.contains(&k.to_string()))
+                            } else {
+                                true
+                            }
+                    }
+                    _ => {if let Some::<&[&str]>(_) = $data { } false}
+                }
+            ,)+
+        } else {
+            ($({
+                    if let Some<&[&str]>(_) = $data {} true
+            },)+)
+        }
+    };
+
+    ($role:expr, $perm:expr, $(($action:expr, $($data:expr), +)), +) => {
+        if !$role.eq("root") {
+            let role_perm_maps = $crate::perm::ROLES_GROUP_MAP.lock().await;
+            $(
+                match op::catch!(role_perm_maps.get($role)?.get($perm)?.get($action)) {
+                    Some(v) => {
+                        vec![$(
+                            if let Some::<&[&str]>(d) = $data {
+                                d.iter().all(|k| v.contains(&k.to_string()))
+                            } else {
+                                true
+                            },
+                        )+]
+                    }
+                    _ => vec![$({if let Some::<&[&str]>(_) = $data { } false}, )+]
+                }
+
+            ,)+
+        } else {
+            ($({
+                    let _ = $action;
+                    vec![$({if let Some<&[&str]>(_) = $data {} true},)+]
+            },)+)
+        }
+    };
+
+
+
+    ($role:expr, $perm:expr, $action:expr) => {
+        $crate::verify_perms!($role, $perm, $action, None)
+    };
+
+    // 普通验证
+    ($role:expr, $perm:expr, $action:expr, $data:expr) => {
+        $role.eq("root") || {
+            let role_perm_maps = $crate::perm::ROLES_GROUP_MAP.lock().await;
+            op::catch!{ role_perm_maps.get($role)?.get($perm)?.get($action)}
+            .map_or(false, |v| {
+                $data.map_or(true, |d: &[&str]| d.iter().all(|k| v.contains(&k.to_string())))
+            })
+
+        }
+    };
+
+
+
+    // 同时验证多个
+    ($role:expr, $perm:expr, $action:expr, $($data:expr), +) => {
+        if !$role.eq("root") {
+            let role_perm_maps = $crate::perm::ROLES_GROUP_MAP.lock().await;
+                match op::catch!(role_perm_maps.get($role)?.get($perm)?.get($action)) {
+                    Some(v) => {
+                        ($(
+                            if let Some::<&[&str]>(d) = $data {
+                                d.iter().all(|k| v.contains(&k.to_string()))
+                            } else {
+                                true
+                            },
+                        )+)
+                    }
+                    _ => ($({if let Some::<&[&str]>(_) = $data { } false}, )+)
+                }
+        } else {
+            ($( { if let Some::<&[&str]>(_) = $data{} true }, )+)
+        }
+    };
+
+}
 
 async fn get_perm(headers: HeaderMap) -> ResponseResult {
     let mut conn = get_conn()?;
@@ -159,11 +329,3 @@ pub fn get_role(id: &str, conn: &mut PooledConn) -> Result<String, Response> {
     let role = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));
     Ok(role)
 }
-
-// async fn verify_perm(headers: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
-//     let bearer = bearer!(&headers);
-//     let mut conn = get_conn()?;
-//     let mut id = parse_jwt_macro!(&bearer, &mut conn => true);
-//     let permissions: PermissionGroupMap = serde_json::from_value(value)?;
-//     Ok(Response::ok(json!(true)))
-// }

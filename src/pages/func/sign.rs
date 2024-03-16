@@ -21,9 +21,9 @@ use crate::{
     },
     pages::account::get_user,
     parse_jwt_macro,
-    perm::{action::OtherGroup, verify_permissions},
+    perm::action::OtherGroup,
     response::BodyFile,
-    Response, ResponseResult,
+    verify_perms, Response, ResponseResult,
 };
 
 pub fn sign_router() -> Router {
@@ -51,6 +51,7 @@ async fn add_sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let part = parse_multipart(part).await?;
+    println!("接收到的图片数量是{}", part.files.len());
     let param = serde_json::from_str(&part.json)?;
     commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, Some(&part.files)))?;
     Ok(Response::empty())
@@ -135,7 +136,7 @@ struct SignRecord {
     department: String,
     #[serde(serialize_with = "split_files")]
     #[serde(rename = "files")]
-    file: String,
+    file: Option<String>,
     content: String,
 }
 
@@ -150,18 +151,15 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
         0 => {
             let (id, depart) = if param.data.eq("my") || param.data.eq(&uid) {
                 (uid.clone(), user.department)
-            } else if verify_permissions(&user.role, "other", OtherGroup::QUERY_SIGN_IN, None).await
-            {
+            } else if let (true, all) = verify_perms!(
+                &user.role,
+                OtherGroup::NAME,
+                OtherGroup::QUERY_SIGN_IN,
+                None,
+                Some(["all"].as_slice())
+            ) {
                 let other = get_user(&param.data, &mut conn)?;
-                if other.department.eq(&user.department)
-                    || verify_permissions(
-                        &user.role,
-                        "other",
-                        OtherGroup::QUERY_SIGN_IN,
-                        Some(&["all"]),
-                    )
-                    .await
-                {
+                if all || other.department.eq(&user.department) {
                     (other.id, other.department)
                 } else {
                     return Err(Response::permission_denied());
@@ -174,7 +172,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where signer = '{id}' and s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time"
+                where signer = '{id}' and s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time desc"
             , param.start);
             println!("{}", query);
             let records: Vec<SignRecord> = conn.query(query)?;
@@ -184,16 +182,17 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
             })])))
         }
         1 => {
-            if verify_permissions(
-                &user.role,
-                "other",
-                OtherGroup::QUERY_SIGN_IN,
-                Some(&["all"]),
-            )
-            .await
-                || (verify_permissions(&user.role, "other", OtherGroup::QUERY_SIGN_IN, None).await
-                    && (param.data.eq("my") || param.data.eq(&user.department)))
-            {
+            let flag = {
+                let (depart, all) = verify_perms!(
+                    &user.role,
+                    OtherGroup::NAME,
+                    OtherGroup::QUERY_SIGN_IN,
+                    None,
+                    Some(["all"].as_slice())
+                );
+                all || (depart && param.data.eq("my") || param.data.eq(&user.department))
+            };
+            if flag {
                 let depart = ternary!(param.data.eq("my") => user.department, param.data);
 
                 let query = format!(
@@ -201,7 +200,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time",
+                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time desc",
                     param.start
                 );
                 println!("{}", query);
@@ -215,20 +214,18 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
             }
         }
         2 => {
-            if verify_permissions(
+            if verify_perms!(
                 &user.role,
-                "other",
+                OtherGroup::NAME,
                 OtherGroup::QUERY_SIGN_IN,
-                Some(&["all"]),
-            )
-            .await
-            {
+                Some(["all"].as_slice())
+            ) {
                 let records: Vec<SignRecord> = conn.query(format!(
                     "select s.*, sr.name as signer_name, c.name as customer_name, sr.department as department
                 from sign s
                 join user sr on sr.id = s.signer
                 left join customer c on c.id = s.customer
-                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time",
+                where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time desc",
                     param.start
                 ))?;
                 let mut map: HashMap<String, Vec<SignRecord>> = HashMap::new();
@@ -274,16 +271,16 @@ async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> Respon
     }
 }
 
-fn __delete_sign_record(conn: &mut PooledConn, (uid, id, file): (&str, &str, &str)) -> Result<(), Response> {
+fn __delete_sign_record(
+    conn: &mut PooledConn,
+    (uid, id, file): (&str, &str, &str),
+) -> Result<(), Response> {
     conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
     for f in file.split('&') {
         ternary!(f.is_empty() => continue, ());
         std::fs::remove_file(format!("resources/sign/{uid}/{f}"))?;
     }
     Ok(())
-
-
-
 }
 
 async fn sign_img(header: HeaderMap, Path(id): Path<String>) -> Result<BodyFile, Response> {

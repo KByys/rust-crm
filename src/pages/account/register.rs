@@ -1,9 +1,11 @@
 use super::{get_user, User};
-use crate::catch;
 use crate::libs::{dser::*, gen_id, TIME};
 use crate::pages::check_drop_down_box;
+use crate::perm::action::AccountGroup;
+use crate::perm::roles::ROLE_TABLES;
 use crate::perm::verify_permissions;
 use crate::{bearer, database::get_conn, debug_info, parse_jwt_macro, Response, ResponseResult};
+use crate::{catch, verify_perms};
 use axum::{http::HeaderMap, Json};
 use mysql::{params, prelude::Queryable, PooledConn};
 use serde_json::{json, Value};
@@ -89,7 +91,14 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
 }
 /// 验证用户创建账号的权限
 async fn ver_user_perm(adm: &User, regis: &User) -> bool {
+    let role_name = unsafe { op::some!(ROLE_TABLES.get_name(&regis.role); ret false) };
     adm.role.eq("root")
         || (adm.department == regis.department
-            && verify_permissions(&regis.role, "account", "create", Some(&[&regis.role])).await)
+            && verify_perms!(
+                &adm.role,
+                AccountGroup::NAME,
+                AccountGroup::CREATE,
+                Some([role_name].as_slice())
+            ))
+
 }

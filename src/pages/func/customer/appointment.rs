@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss;
 use crate::libs::TimeFormat;
 use crate::perm::action::CustomerGroup;
-use crate::perm::{get_role, verify_permissions};
+use crate::perm::get_role;
 use crate::{
     bearer,
     database::get_conn,
@@ -57,7 +57,7 @@ struct InsertParams {
 // 安排业务员拜访客户需要验证权限
 // 修改和删除拜访需要拜访发起者
 // 完成拜访需要拜访者
-use crate::commit_or_rollback;
+use crate::{commit_or_rollback, verify_perms};
 async fn add_appointments(
     header: HeaderMap,
     Json(value): Json<serde_json::Value>,
@@ -76,7 +76,7 @@ async fn __add_appoint(
 ) -> Result<(), Response> {
 
     let role = get_role(uid, conn)?;
-    let flag = verify_permissions(&role, "customer", CustomerGroup::ADD_APPOINT, None).await;
+    let flag = verify_perms!(&role, CustomerGroup::NAME, CustomerGroup::ADD_APPOINT);
     for param in params {
         let time = TIME::now()?;
         if !param.salesman.eq(uid) && !flag {

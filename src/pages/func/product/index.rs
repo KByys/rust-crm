@@ -1,5 +1,6 @@
+
 use crate::{
-    bearer,
+    bearer, commit_or_rollback,
     database::{c_or_r, get_conn},
     libs::{
         dser::{deser_f32, serialize_f32_to_string},
@@ -11,12 +12,12 @@ use crate::{
             __insert_custom_fields, __update_custom_fields, customer::index::CustomCustomerData,
             get_custom_fields,
         },
-        setting::option::check_drop_down_box,
+        DROP_DOWN_BOX,
     },
     parse_jwt_macro,
-    perm::verify_permissions,
+    perm::action::StorehouseGroup,
     response::BodyFile,
-    Response, ResponseResult,
+    verify_perms, Response, ResponseResult,
 };
 use axum::{
     extract::{Multipart, Path},
@@ -32,11 +33,57 @@ pub fn product_router() -> Router {
     Router::new()
         .route("/product/add", post(add_product))
         .route("/product/update", post(update_product))
+        .route("/product/update/store", post(update_product_store))
         .route("/product/update/json", post(update_product_json))
         .route("/product/delete/:id", delete(delete_product))
         .route("/product/app/list/data", post(query_product))
         .route("/product/query/:id", get(query_by))
         .route("/product/cover/:cover", get(get_cover))
+}
+use crate::libs::dser::deserialize_storehouse;
+#[derive(Debug, Serialize, Deserialize, mysql_common::prelude::FromRow)]
+struct Inventory {
+    #[serde(deserialize_with = "deserialize_storehouse")]
+    storehouse: String,
+    amount: usize,
+}
+#[derive(Default)]
+pub struct WrapperInventory {
+    inner: Vec<Inventory>,
+}
+
+impl std::fmt::Debug for WrapperInventory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.inner, f)
+    }
+}
+impl From<String> for WrapperInventory {
+    fn from(_: String) -> Self {
+        Self { inner: Vec::new() }
+    }
+}
+
+impl mysql::prelude::FromValue for WrapperInventory {
+    type Intermediate = String;
+}
+impl<'de> Deserialize<'de> for WrapperInventory {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            inner: Deserialize::deserialize(deserializer)?,
+        })
+    }
+}
+
+impl Serialize for WrapperInventory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Serialize::serialize(&self.inner, serializer)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, mysql_common::prelude::FromRow)]
@@ -56,8 +103,6 @@ struct ProductParams {
     model: String,
     /// 单位
     unit: String,
-    /// 数量
-    amount: usize,
     product_type: String,
     #[serde(deserialize_with = "deser_f32")]
     #[serde(serialize_with = "serialize_f32_to_string")]
@@ -65,8 +110,9 @@ struct ProductParams {
     /// 条形码
     barcode: String,
     explanation: String,
-    storehouse: String,
     custom_fields: CustomCustomerData,
+    #[serde(default)]
+    inventory: WrapperInventory,
 }
 
 async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
@@ -74,37 +120,37 @@ async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn)?;
-    if !verify_permissions(&user.role, "storehouse", "product", Some(&["create"])).await {
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::ADD_PRODUCT
+    ) {
         return Err(Response::permission_denied());
     }
+
     let part = parse_multipart(part).await?;
     let data: ProductParams = serde_json::from_str(&part.json)?;
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
-    c_or_r(__insert, &mut conn, (data, file), false)?;
+    commit_or_rollback!(async __insert, &mut conn, (data, file, &user.role))?;
 
     Ok(Response::empty())
 }
 
-fn __insert(
+async fn __insert(
     conn: &mut PooledConn,
-    (mut data, part): (ProductParams, &FilePart),
+    (mut data, part, role): (ProductParams, &FilePart, &str),
 ) -> Result<(), Response> {
     let time = TIME::now()?;
     data.id = gen_id(&time, &data.name);
     let pinyin = rust_pinyin::get_pinyin(&data.name);
     let n: Option<i32> = conn.query_first(format!(
-        "SELECT num FROM product_num WHERE name='{}'",
+        "select num from product_num where name='{}'",
         pinyin
     ))?;
 
     let n = n.unwrap_or(0) + 1;
     if data.num.is_empty() {
         data.num = format!("NO.{}{:0>7}", pinyin, n)
-    }
-    if let Some(true) = check_drop_down_box("storehouse", &data.storehouse) {
-        // nothing
-    } else {
-        return Err(Response::not_exist("库房不存在"));
     }
     conn.query_drop(format!(
         "INSERT INTO product_num (name, num) VALUES ('{pinyin}', {n})
@@ -113,24 +159,103 @@ fn __insert(
     data.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
     let link = gen_file_link(&time, part.filename());
     conn.exec_drop(
-        "INSERT INTO product (id, num, name, specification, cover, model, unit,
-        amount, product_type, price, create_time, barcode, explanation, storehouse) VALUES (
-        :id, :num, :name, :specification, :cover, :model, :unit,
-        :amount, :product_type, :price, :create_time, :barcode, :explanation, :storehouse
+        "INSERT INTO product (id, num, name, 
+                specification, cover, model, unit,
+                product_type, price, create_time, 
+                barcode, explanation) VALUES (
+                :id, :num, :name, :specification, :cover, :model, :unit,
+                :product_type, :price, :create_time, :barcode, :explanation
         )",
         params! {
-            "id" => &data.id, "num" => data.num, "name" => data.name,
-            "specification" => data.specification, "cover" => &link,
-            "model" => data.model, "unit" => data.unit, "amount" => data.amount,
-            "product_type" => data.product_type, "price" => data.price,
-            "explanation" => data.explanation, "storehouse" => data.storehouse,
-            "create_time" => data.create_time, "barcode" => data.barcode,
+            "id" => &data.id,
+            "num" => data.num,
+            "name" => data.name,
+            "specification" => data.specification,
+            "cover" => &link,
+            "model" => data.model,
+            "unit" => data.unit,
+            "product_type" => data.product_type,
+            "price" => data.price,
+            "explanation" => data.explanation,
+            "create_time" => data.create_time,
+            "barcode" => data.barcode,
 
         },
     )?;
+    first_update_store(conn, &data.id, &data.inventory.inner, role).await?;
     __insert_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
     std::fs::write(format!("resources/product/cover/{link}"), &part.bytes)?;
     Ok(())
+}
+
+async fn first_update_store(
+    conn: &mut PooledConn,
+    id: &str,
+    store: &[Inventory],
+    role: &str,
+) -> Result<(), Response> {
+    if !store.is_empty()
+        && !verify_perms!(
+            role,
+            StorehouseGroup::NAME,
+            StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY
+        )
+    {
+        return Err(Response::permission_denied());
+    }
+    unsafe {
+        let map = DROP_DOWN_BOX.get("storehouse");
+        for s in store {
+            if map.contains(&s.storehouse.as_str()) {
+                conn.query_drop(format!(
+                    "insert into product_store (product, storehouse, amount) 
+                        values ('{id}', '{}', {})",
+                    s.storehouse, s.amount
+                ))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+async fn update_store(
+    conn: &mut PooledConn,
+    id: &str,
+    store: &[Inventory],
+    role: &str,
+) -> Result<(), Response> {
+    if !verify_perms!(
+        role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY
+    ) {
+        return Err(Response::permission_denied());
+    }
+    for s in store {
+        conn.query_drop(format!(
+            "insert into product_store (product, storehouse, amount) 
+                values ('{}', '{}', {}) 
+                on duplicate key update amount = {}",
+            id, s.storehouse, s.amount, s.amount
+        ))?;
+    }
+
+    Ok(())
+}
+
+async fn update_product_store(
+    header: HeaderMap,
+    Path(id): Path<String>,
+    Json(value): Json<Value>,
+) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn)?;
+    let inventory: Vec<Inventory> = serde_json::from_value(value)?;
+    update_store(&mut conn, &id, &inventory, &user.role).await?;
+    Ok(Response::empty())
 }
 
 async fn update_product(header: HeaderMap, part: Multipart) -> ResponseResult {
@@ -138,10 +263,13 @@ async fn update_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn)?;
-    if !verify_permissions(&user.role, "storehouse", "product", Some(&["update"])).await {
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::UPDATE_PRODUCT
+    ) {
         return Err(Response::permission_denied());
     }
-
     let part = parse_multipart(part).await?;
     let data: ProductParams = serde_json::from_str(&part.json)?;
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
@@ -154,11 +282,16 @@ async fn update_product_json(header: HeaderMap, Json(value): Json<Value>) -> Res
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn)?;
-    if !verify_permissions(&user.role, "storehouse", "product", Some(&["update"])).await {
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::UPDATE_PRODUCT,
+        None
+    ) {
         return Err(Response::permission_denied());
     }
     let data: ProductParams = serde_json::from_value(value)?;
-    c_or_r(__update, &mut conn, (data, None), false)?;
+    commit_or_rollback!(__update, &mut conn, (data, None))?;
     Ok(Response::empty())
 }
 
@@ -166,11 +299,6 @@ fn __update(
     conn: &mut PooledConn,
     (data, part): (ProductParams, Option<&FilePart>),
 ) -> Result<(), Response> {
-    if let Some(true) = check_drop_down_box("storehouse", &data.storehouse) {
-        // nothing
-    } else {
-        return Err(Response::not_exist("库房不存在"));
-    }
     let cover: Option<String> = conn.query_first(format!(
         "SELECT cover FROM product WHERE id = '{}' LIMIT 1",
         data.id
@@ -188,17 +316,30 @@ fn __update(
     };
 
     println!("{:#?}", data);
-    conn.exec_drop(format!("UPDATE product SET num=:num, name=:name, specification=:specification,
-        cover=:cover, model=:model, unit=:unit, amount=:amount, product_type=:product_type, price=:price,
-        barcode=:barcode, explanation=:explanation, storehouse=:storehouse WHERE id = '{}' LIMIT 1", data.id), 
+    conn.exec_drop(
+        format!(
+            "UPDATE product 
+                SET num=:num, 
+                name=:name, 
+                specification=:specification,
+                cover=:cover, 
+                model=:model, 
+                unit=:unit,  
+                product_type=:product_type, 
+                price=:price,
+                barcode=:barcode, 
+                explanation=:explanation 
+                WHERE id = '{}' LIMIT 1",
+            data.id
+        ),
         params! {
             "num" => data.num, "name" => data.name,
             "specification" => data.specification, "cover" => &link,
-            "model" => data.model, "unit" => data.unit, "amount" => data.amount,
+            "model" => data.model, "unit" => data.unit,
             "product_type" => data.product_type, "price" => data.price,
-            "explanation" => &data.explanation, "storehouse" => &data.storehouse,
+            "explanation" => &data.explanation,
             "barcode" => data.barcode,
-        }
+        },
     )?;
 
     __update_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
@@ -219,32 +360,53 @@ struct QueryParams {
 async fn query_product(Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
     let data: QueryParams = serde_json::from_value(value)?;
-    println!("{:#?}", data);
+    let ty = op::ternary!(data.ty.is_empty() => "IS NOT NULL".into(); format!("= '{}'", data.ty));
     let stock = match data.stock {
         1 => "> 0",
         2 => "= 0",
-        _ => ">= 0",
+        _ => "is not null",
     };
-    let ty = op::ternary!(data.ty.is_empty() => "IS NOT NULL".into(); format!("= '{}'", data.ty));
-    let storehouse = op::ternary!(data.storehouse.is_empty() => ">''".into(); format!("= '{}'", data.storehouse));
-    println!(
-         "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"
+
+    let store = if data.storehouse.is_empty() {
+        "is not null".to_owned()
+    } else {
+        format!("= '{}'", &data.storehouse)
+    };
+    let query = format!(
+        "select pr.*, 1 as custom_fields, 1 as inventory from product pr 
+        where pr.product_type {ty} and 
+        exists (select 1 from product_store ps 
+            where ps.product = pr.id and ps.storehouse {store} and ps.amount {stock})"
     );
-    let mut products: Vec<ProductParams> = conn.query(format!(
-        "SELECT *, 1 as custom_fields FROM product WHERE product_type {ty} AND storehouse {storehouse} AND amount {stock}"))?;
-    for product in &mut products {
+    println!("{query}");
+    let tmp: Vec<ProductParams> = conn.query(query)?;
+    let mut products = Vec::new();
+    for mut product in tmp {
+        product.inventory.inner = conn.query(format!(
+            "select storehouse, amount 
+                from product_store 
+                where product = '{}' and amount {stock} 
+                and storehouse {store} order by storehouse",
+            product.id
+        ))?;
         product.custom_fields = get_custom_fields(&mut conn, &product.id, 1)?;
+        products.push(product);
     }
-    println!("{:#?}", products);
     Ok(Response::ok(json!(products)))
 }
 
 async fn query_by(Path(id): Path<String>) -> ResponseResult {
     let mut conn = get_conn()?;
     let mut data: Option<ProductParams> = conn.query_first(format!(
-        "SELECT *, 1 as custom_fields FROM product WHERE id = '{id}' ORDER BY create_time"
+        "SELECT *, 1 as custom_fields, 1 as inventory FROM product WHERE id = '{id}' ORDER BY create_time"
     ))?;
     if let Some(d) = &mut data {
+        d.inventory.inner = conn.query(format!(
+            "select storehouse, amount 
+                from product_store 
+                where product = '{}' order by storehouse",
+            d.id
+        ))?;
         d.custom_fields = get_custom_fields(&mut conn, &d.id, 1)?;
     }
     Ok(Response::ok(json!(data)))
@@ -255,16 +417,23 @@ async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseRe
     let mut conn = get_conn()?;
     let user = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&user, &mut conn)?;
-    if !verify_permissions(&user.role, "storehouse", "product", Some(&["delete"])).await {
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::DELETE_PRODUCT
+    ) {
         return Err(Response::permission_denied());
     }
-    c_or_r(__delete_product, &mut conn, &id, false)?;
+    commit_or_rollback!(__delete_product, &mut conn, &id)?;
     Ok(Response::empty())
 }
 fn __delete_product(conn: &mut PooledConn, id: &str) -> Result<(), Response> {
-    let cover: Option<String> = conn.query_first(format!("select cover from product where id = '{id}'"))?;
+    let cover: Option<String> =
+        conn.query_first(format!("select cover from product where id = '{id}'"))?;
     conn.query_drop(format!("DELETE FROM custom_field_data WHERE id = '{id}'"))?;
     conn.query_drop(format!("DELETE FROM product WHERE id = '{id}' LIMIT 1"))?;
+    conn.query_drop(format!("DELETE FROM product_store WHERE product = '{id}'"))?;
+
     if let Some(cover) = cover {
         std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
     }

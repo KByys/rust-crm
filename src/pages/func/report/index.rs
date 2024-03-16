@@ -111,13 +111,18 @@ struct ReadParams {
     opinion: String,
 }
 
-async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+async fn read_report(header: HeaderMap, Json(value): Json<Value>) 
+-> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ReadParams = serde_json::from_value(value)?;
     let report: Report = 
-    conn.query_first(format!("select *, 1 as ac_name, 1 as applicant_name, 1 as reviewer_name from report where id ='{}'", data.id))?.unwrap();
+    conn.query_first(format!(
+        "select *, 1 as ac_name, 1 as applicant_name, 1 as reviewer_name 
+        from report 
+        where id ='{}'", data.id)
+    )?.unwrap();
     if report.send_time.is_none() || report.processing_time.is_some() {
         return Err(Response::dissatisfy("未发送或已审批"));
     }
@@ -125,10 +130,14 @@ async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
         return Err(Response::permission_denied());
     }
     let status = op::ternary!(data.ok => 0, 1);
-    let process_time = TIME::now()?.format(TimeFormat::YYYYMMDD_HHMMSS);
+    let process_time = TIME::now()?
+    .format(TimeFormat::YYYYMMDD_HHMMSS);
     let update = format!(
-        "update report set status={status}, processing_time='{process_time}', opinion='{}' 
-        WHERE id = '{}' AND reviewer='{uid}' AND send_time IS NOT NULL and processing_time is NULL LIMIT 1",
+        "update report set status={status}, 
+        processing_time='{process_time}', opinion='{}' 
+        WHERE id = '{}' AND reviewer='{uid}' 
+        AND send_time IS NOT NULL 
+        and processing_time is NULL LIMIT 1",
         data.opinion, data.id
     );
     println!("{}", update);
@@ -173,7 +182,8 @@ async fn update_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseR
 
 fn __update_report(conn: &mut PooledConn, param: &UpdateParams) -> Result<(), Response> {
     conn.query_drop(format!(
-        "update report set ty={}, reviewer='{}', ac='{}', contents='{}' where id ='{}' limit 1",
+        "update report set ty={}, reviewer='{}', ac='{}', contents='{}' 
+        where id ='{}' limit 1",
         param.ty, param.reviewer, param.ac, param.contents, param.id
     ))?;
     conn.query_drop(format!("delete from report_cc where report='{}'", param.id))?;

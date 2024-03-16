@@ -17,9 +17,7 @@ async fn main() {
         MYSQL_URI = setting.mysql_addr();
     }
     crm_rust::database::create_table().unwrap();
-
     unsafe { init_static() };
-
     let router = Router::new()
         .merge(crm_rust::pages::pages_router())
         .merge(crm_rust::perm::perm_router())

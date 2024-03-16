@@ -6,13 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer,
-    database::{c_or_r, get_conn},
-    debug_info,
-    libs::time::{TimeFormat, TIME},
-    parse_jwt_macro,
-    perm::{get_role, verify_permissions},
-    Response, ResponseResult,
+    bearer, database::{c_or_r, get_conn}, debug_info, libs::time::{TimeFormat, TIME}, parse_jwt_macro, perm::{action::OtherGroup, get_role}, verify_perms, Response, ResponseResult
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -32,7 +26,7 @@ async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String
     let id = parse_jwt_macro!(&bearer, conn => true);
     let mut conn = get_conn()?;
     let role = get_role(&id, &mut conn)?;
-    if role.eq("root") || verify_permissions(&role, "other", "custom_field", None).await {
+    if verify_perms!(&role, OtherGroup::NAME, OtherGroup::CUSTOM_FIELD) {
         Ok(id)
     } else {
         Err(Response::permission_denied())
@@ -176,7 +170,6 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         // 字段为空字符串则忽略
         return Err(Response::empty());
     }
-    // CustomizeFieldType::new(&data.display)?;
     if !matches!(data.display.as_str(), "0" | "1" | "2") {
         return Err(Response::invalid_value("display 非法"));
     }

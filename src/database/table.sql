@@ -74,6 +74,7 @@ INSERT
 VALUES
     ('root', '总经理'),
     ('admin', '管理员'),
+    ('manager', '主管'),
     ('salesman', '销售员');
 
 -- 用户表
@@ -188,7 +189,6 @@ CREATE TABLE IF NOT EXISTS appoint_comment (
     PRIMARY KEY (id)
 );
 
-
 CREATE TABLE IF NOT EXISTS token(
     ty INT NOT NULL,
     id VARCHAR(150) NOT NULL,
@@ -207,14 +207,19 @@ CREATE TABLE IF NOT EXISTS product(
     cover VARCHAR(150) NULL,
     model VARCHAR(20) NOT NULL,
     unit VARCHAR(30) NOT NULL,
-    amount INT NOT NULL,
     product_type VARCHAR(30) NOT NULL,
     price FLOAT NOT NULL,
     create_time VARCHAR(25) NOT NULL,
     barcode VARCHAR(20) NOT NULL,
     explanation TEXT,
-    storehouse VARCHAR(30) NOT NULL,
     PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS product_store(
+    product VARCHAR(150) NOT NULL,
+    storehouse VARCHAR(30) NOT NULL,
+    amount INT NOT NULL,
+    PRIMARY KEY (product, storehouse)
 );
 
 -- 产品编号，用于记录顺序
@@ -242,13 +247,13 @@ CREATE TABLE IF NOT EXISTS report(
     status INT NOT NULL,
     PRIMARY KEY (id)
 );
+
 -- 报告抄送人
 CREATE TABLE IF NOT EXISTS report_cc (
     cc VARCHAR(150) NOT NULL,
     report VARCHAR(150) NOT NULL,
     PRIMARY KEY (cc, report)
 );
-
 
 -- 报告回复
 CREATE TABLE IF NOT EXISTS report_reply(

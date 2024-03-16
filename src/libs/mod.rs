@@ -40,6 +40,7 @@ pub async fn parse_multipart(mut part: Multipart) -> Result<MessagePart, Respons
         match field.name() {
             Some("file") => {
                 let filename = field.file_name().map(|s| s.to_owned());
+                println!("{:?}", filename);
                 let content_type = field.content_type().map(|s| s.to_string());
                 let chunk = field.bytes().await?.to_vec();
                 files.push(FilePart {

@@ -71,9 +71,9 @@ macro_rules! commit_or_rollback {
     (async $fn:expr, $conn:expr, $params:expr) => {{
         $conn.query_drop("BEGIN")?;
         match $fn($conn, $params).await {
-            Ok(_) => {
+            Ok(ok) => {
                 $conn.query_drop("COMMIT")?;
-                Ok(())
+                Ok(ok)
             }
             Err(e) => {
                 $conn.query_drop("ROLLBACK")?;
@@ -84,9 +84,9 @@ macro_rules! commit_or_rollback {
     ($fn:expr, $conn:expr, $params:expr) => {{
         $conn.query_drop("BEGIN")?;
         match $fn($conn, $params) {
-            Ok(_) => {
+            Ok(ok) => {
                 $conn.query_drop("COMMIT")?;
-                Ok(())
+                Ok(ok)
             }
             Err(e) => {
                 $conn.query_drop("ROLLBACK")?;

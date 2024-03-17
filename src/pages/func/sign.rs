@@ -37,6 +37,10 @@ pub fn sign_router() -> Router {
 
 #[derive(Debug, Deserialize)]
 struct InsertParams {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    file: String,
     address: String,
     location: String,
     #[serde(deserialize_with = "deser_empty_to_none")]
@@ -51,10 +55,12 @@ async fn add_sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let part = parse_multipart(part).await?;
-    println!("接收到的图片数量是{}", part.files.len());
     let param = serde_json::from_str(&part.json)?;
-    commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, Some(&part.files)))?;
-    Ok(Response::empty())
+    let (id, file) = commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, Some(&part.files)))?;
+    Ok(Response::ok(json!({
+        "id": id,
+        "file": file
+    })))
 }
 
 async fn add_sign_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
@@ -65,11 +71,35 @@ async fn add_sign_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseR
     commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, None))?;
     Ok(Response::empty())
 }
+fn recv_mul_image(
+    file: Option<&[FilePart]>,
+    time: &TIME,
+) -> Result<Option<String>, Response> {
+    if let Some(f) = op::catch!(file?.first()) {
+        let file_link = gen_file_link(time, f.filename());
+        let parent = "resources/sign";
+        std::fs::write(format!("{parent}/{file_link}"), &f.bytes)?;
+        return Ok(Some(file_link));
+    }
+    Ok(None)
+}
 fn __add_sign(
     conn: &mut PooledConn,
     (uid, param, file): (&str, &InsertParams, Option<&[FilePart]>),
-) -> Result<(), Response> {
+) -> Result<(String, Option<String>), Response> {
     let time = TIME::now()?;
+    if !param.id.is_empty() && !param.file.is_empty() {
+        let link = recv_mul_image(file, &time)?;
+        if let Some(link) = link {
+            let file_link = format!("{}&{}", param.file, link);
+            conn.query_drop(format!(
+                "update sign set file = '{file_link}' where id = '{}' limit 1",
+                param.id
+            ))?;
+            return Ok((param.id.clone(), Some(file_link)));
+        }
+        return Ok(Default::default());
+    }
     let file_link = match file {
         Some(files) => {
             let mut link = String::new();
@@ -77,12 +107,11 @@ fn __add_sign(
                 link.push_str(&format!("{}&", gen_file_link(&time, f.filename())))
             }
             link.pop();
-            println!("{}", link);
             Some(link)
         }
         None => None,
     };
-    let id = gen_id(&time, "report");
+    let id = gen_id(&time, "sign");
     conn.exec_drop(
         format!(
             "insert into sign 
@@ -104,14 +133,12 @@ fn __add_sign(
     )?;
     if let Some(files) = file {
         let links: Vec<_> = file_link.as_ref().expect("unreadable").split('&').collect();
-        let parent = format!("resources/sign/{}", uid);
-        println!("{}", parent);
-        create_dir(&parent).unwrap_or(());
+        let parent = "resources/sign";
         for (i, f) in files.iter().enumerate() {
             std::fs::write(format!("{parent}/{}", links[i]), &f.bytes)?;
         }
     }
-    Ok(())
+    Ok((id, file_link))
 }
 #[derive(Debug, Deserialize)]
 struct QueryParams {
@@ -199,7 +226,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 let query = format!(
                     "select s.*, sr.name as signer_name, c.name as customer_name, c.company, 1 as department
                 from sign s
-                join user sr on sr.id = s.signer
+                join user sr on sr.id = s.signer and sr.department = '{depart}'
                 left join customer c on c.id = s.customer
                 where s.sign_time >= '{}' and s.sign_time <= '{end}' order by sign_time desc",
                     param.start
@@ -262,7 +289,7 @@ async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> Respon
     ))?;
     if let Some((_, f)) = key {
         if let Some(file) = f {
-            commit_or_rollback!(__delete_sign_record, &mut conn, (&uid, &id, &file))?;
+            commit_or_rollback!(__delete_sign_record, &mut conn, (&id, &file))?;
         } else {
             conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
         }
@@ -274,20 +301,17 @@ async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> Respon
 
 fn __delete_sign_record(
     conn: &mut PooledConn,
-    (uid, id, file): (&str, &str, &str),
+    (id, file): (&str, &str),
 ) -> Result<(), Response> {
     conn.query_drop(format!("delete from sign where id = '{id}' limit 1"))?;
     for f in file.split('&') {
         ternary!(f.is_empty() => continue, ());
-        std::fs::remove_file(format!("resources/sign/{uid}/{f}"))?;
+        std::fs::remove_file(format!("resources/sign/{f}"))?;
     }
     Ok(())
 }
 
-async fn sign_img(header: HeaderMap, Path(id): Path<String>) -> Result<BodyFile, Response> {
-    let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
-    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    BodyFile::new_with_base64_url(format!("resources/sign/{uid}"), &id)
+async fn sign_img(Path(id): Path<String>) -> Result<BodyFile, Response> {
+    BodyFile::new_with_base64_url("resources/sign", &id)
         .map_err(|(code, msg)| Response::new(code, -1, json!(msg)))
 }

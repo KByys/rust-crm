@@ -33,7 +33,7 @@ pub fn product_router() -> Router {
     Router::new()
         .route("/product/add", post(add_product))
         .route("/product/update", post(update_product))
-        .route("/product/update/store", post(update_product_store))
+        .route("/product/update/store/:id", post(update_product_store))
         .route("/product/update/json", post(update_product_json))
         .route("/product/delete/:id", delete(delete_product))
         .route("/product/app/list/data", post(query_product))

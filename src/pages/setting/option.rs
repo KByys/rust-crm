@@ -23,7 +23,7 @@ pub fn check_drop_down_box(key: &str, value: &str) -> Option<bool> {
     }
 }
 
-pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
+pub const DROP_DOWN_BOX_ALL: [&str; 17] = [
     "customer_type",
     "customer_status",
     "customer_tag",
@@ -40,6 +40,7 @@ pub const DROP_DOWN_BOX_ALL: [&str; 16] = [
     "payment",
     "order_progress",
     "customer_level",
+    "invoice_type"
 ];
 
 macro_rules! get_drop_down_box {

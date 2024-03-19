@@ -1,4 +1,3 @@
-
 use crate::{
     bearer, commit_or_rollback,
     database::{c_or_r, get_conn},
@@ -36,9 +35,11 @@ pub fn product_router() -> Router {
         .route("/product/update/store/:id", post(update_product_store))
         .route("/product/update/json", post(update_product_json))
         .route("/product/delete/:id", delete(delete_product))
+        .route("/product/delete/store/:id", delete(delete_storehouse))
         .route("/product/app/list/data", post(query_product))
         .route("/product/query/:id", get(query_by))
         .route("/product/cover/:cover", get(get_cover))
+
 }
 use crate::libs::dser::deserialize_storehouse;
 #[derive(Debug, Serialize, Deserialize, mysql_common::prelude::FromRow)]
@@ -411,7 +412,28 @@ async fn query_by(Path(id): Path<String>) -> ResponseResult {
     }
     Ok(Response::ok(json!(data)))
 }
-
+async fn delete_storehouse(
+    header: HeaderMap,
+    Path(id): Path<String>,
+    Json(value): Json<Vec<String>>,
+) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let user = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&user, &mut conn)?;
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY
+    ) {
+        return Err(Response::permission_denied());
+    }
+    conn.exec_batch(
+        "delete from product_store where id = ? and storehouse = ?",
+        value.iter().map(|v| (&id, v)),
+    )?;
+    Ok(Response::empty())
+}
 async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;

@@ -429,7 +429,7 @@ async fn delete_storehouse(
         return Err(Response::permission_denied());
     }
     conn.exec_batch(
-        "delete from product_store where id = ? and storehouse = ?",
+        "delete from product_store where product = ? and storehouse = ?",
         value.iter().map(|v| (&id, v)),
     )?;
     Ok(Response::empty())

@@ -9,6 +9,8 @@ pub mod database;
 pub mod libs;
 pub mod pages;
 
+use std::fmt::Arguments;
+
 use chrono::prelude::TimeZone;
 use libs::time::TIME;
 pub use libs::{base64_decode, base64_encode};
@@ -24,6 +26,13 @@ pub fn debug_info(info: String) {
         chrono::Local.timestamp_nanos(time as i64).to_rfc3339(),
         info
     )
+}
+
+pub fn log(args: Arguments) {
+    println!("{}", "*".repeat(10));
+    let time = TIME::now().unwrap_or_default();
+    println!("{} ---", time.format(libs::TimeFormat::YYYYMMDD_HHMMSS));
+    println!("    {}", args);
 }
 
 pub fn get_value<'a>(value: &'a serde_json::Value, index: &str) -> Option<&'a str> {

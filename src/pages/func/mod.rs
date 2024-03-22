@@ -1,3 +1,4 @@
+mod order;
 mod product;
 mod report;
 // mod report;
@@ -19,12 +20,11 @@ pub fn func_router() -> Router {
         .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
-    .merge(sign::sign_router())
+        .merge(sign::sign_router())
+        .merge(order::order_router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {
-    println!("ver is {:#?}", ver);
-    println!("data is {:#?}", data);
     ver.len() == data.len() && {
         data.iter()
             .all(|info| ver.iter().any(|v| info.display.eq(v)))

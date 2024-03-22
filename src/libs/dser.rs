@@ -110,6 +110,26 @@ where
     serializer.serialize_str(&name)
 }
 
+pub fn op_deserialize_storehouse<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let name: String = Deserialize::deserialize(de)?;
+    if name.is_empty() {
+        return Ok(None)
+    }
+    unsafe {
+        let flag = DROP_DOWN_BOX
+            .map()
+            .get("storehouse")
+            .map_or(false, |k| k.contains_key(&name));
+        if flag {
+            Ok(Some(name))
+        } else {
+            Err(serde::de::Error::custom("库房不匹配"))
+        }
+    }
+}
 pub fn deserialize_storehouse<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -170,6 +190,16 @@ fn regex_time<'de, D: Deserializer<'de>>(re: &str, de: D, err: &str) -> Result<S
     }
 }
 
+pub fn deser_yyyy_mm_dd<'de, D>(de: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    regex_time(
+        r"(\d{4})-(\d{2})-(\d{2})",
+        de,
+        "YYYY-MM-DD HH:MM:SS",
+    )
+}
 pub fn deser_yyyy_mm_dd_hh_mm_ss<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -191,6 +221,17 @@ where
     )
 }
 
+pub fn op_deser_yyyy_mm_dd_hh_mm_ss<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    regex_time(
+        r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})",
+        de,
+        "YYYY-MM-DD HH:MM",
+    )
+    .map(|s| op::ternary!(s.is_empty() => None; Some(s)))
+}
 pub fn op_deser_yyyy_mm_dd_hh_mm<'de, D>(de: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,

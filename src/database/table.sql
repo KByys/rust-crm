@@ -17,6 +17,12 @@ VALUES
 INSERT
     IGNORE INTO drop_down_box (name, value, create_time)
 VALUES
+    ('invoice_type', '普通发票', '0000-00-00 00:00:00'),
+    ('invoice_type', '专业发票', '0000-00-00 00:00:01'),
+    ('invoice_type', '增值税专用发票', '0000-00-00 00:00:02');
+INSERT
+    IGNORE INTO drop_down_box (name, value, create_time)
+VALUES
     ('department', '总经办', '0000-00-00 00:00:00');
 
 INSERT
@@ -263,4 +269,64 @@ CREATE TABLE IF NOT EXISTS report_reply(
     contents TEXT NOT NULL,
     applicant VARCHAR(150) NOT NULL,
     PRIMARY KEY (id)
+);
+-- 记录订单和发票的编号顺序
+CREATE TABLE IF NOT EXISTS order_num(
+    name VARCHAR(150) NOT NULL,
+    -- 0 订单， 1 发票
+    ty INT NOT NULL,
+    num INTEGER NOT NULL,
+    PRIMARY KEY (name, ty)
+);
+
+CREATE TABLE IF NOT EXISTS order_data(
+    id VARCHAR(150) NOT NULL,
+    number VARCHAR(150) NOT NULL UNIQUE,
+    create_time VARCHAR(25) NOT NULL,
+    status INT NOT NULL,
+    ty VARCHAR(30) NOT NULL,
+    receipt_account VARCHAR(50),
+    salesman VARCHAR(150) NOT NULL,
+    payment_method VARCHAR(30),
+    repayment_model INT NOT NULL,
+    product VARCHAR(150) NOT NULL,
+    discount FLOAT NOT NULL,
+    customer VARCHAR(150) NOT NULL,
+    address TEXT,
+    purchase_unit VARCHAR(100),
+    invoice_required INT NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS invoice(
+    order_id VARCHAR(150) NOT NULL,
+    number VARCHAR(150) NOT NULL,
+    ty VARCHAR(30) NOT NULL,
+    title VARCHAR(30) NOT NULL,
+    deadline VARCHAR(30),
+    description TEXT,
+    PRIMARY KEY (number)
+);
+
+CREATE TABLE IF NOT EXISTS ship(
+    order_id VARCHAR(150) NOT NULL,
+    shipped INT NOT NULL,
+    date VARCHAR(25) NULL,
+    storehouse VARCHAR(30) NOT NULL,
+    PRIMARY KEY (order_id, storehouse)
+);
+CREATE TABLE IF NOT EXISTS order_product_inventory(
+    order_id VARCHAR(150) NOT NULL,
+    amount INT NOT NULL,
+    storehouse VARCHAR(30) NOT NULL,
+    PRIMARY KEY (order_id, storehouse)
+);
+
+CREATE TABLE IF NOT EXISTS order_instalment(
+    order_id VARCHAR(150) NOT NULL,
+    interest FLOAT NOT NULL,
+    original_amount FLOAT NOT NULL,
+    date VARCHAR(25) NOT NULL,
+    finish INT NOT NULL,
+    PRIMARY KEY (order_id, storehouse)
 );

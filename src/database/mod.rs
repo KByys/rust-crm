@@ -66,30 +66,62 @@ where
     }
     result
 }
+
+#[macro_export]
+macro_rules! mysql_stmt {
+    ($table:expr, $($idt:ident, )+) => {
+        {
+            let values = vec![$(stringify!($idt).to_string(), )+];
+            // let params = mysql::params!{ $( stringify!($idt) => &$param.$idt, )+};
+            let values1: String = values.iter().fold(String::new(),|out, v| {
+                if out.is_empty() {
+                    v.clone()
+                } else {
+                    format!("{},{}",out, v)
+                }
+            });
+
+            let values2: String = values.iter().fold(String::new(),|out, v| {
+                if out.is_empty() {
+                    format!(":{}", v)
+                } else {
+                    format!("{},:{}",out, v)
+                }
+            });
+            let stmt = format!("insert into {} ({values1} values {values2})", $table);
+            println!("{stmt}");
+            stmt
+        }
+    };
+
+
+
+}
+
 #[macro_export]
 macro_rules! commit_or_rollback {
     (async $fn:expr, $conn:expr, $params:expr) => {{
-        $conn.query_drop("BEGIN")?;
+        mysql::prelude::Queryable::query_drop($conn, "begin")?;
         match $fn($conn, $params).await {
             Ok(ok) => {
-                $conn.query_drop("COMMIT")?;
+                mysql::prelude::Queryable::query_drop($conn, "commit")?;
                 Ok(ok)
             }
             Err(e) => {
-                $conn.query_drop("ROLLBACK")?;
+                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
                 Err(e)
             }
         }
     }};
     ($fn:expr, $conn:expr, $params:expr) => {{
-        $conn.query_drop("BEGIN")?;
+        mysql::prelude::Queryable::query_drop($conn, "begin")?;
         match $fn($conn, $params) {
             Ok(ok) => {
                 $conn.query_drop("COMMIT")?;
                 Ok(ok)
             }
             Err(e) => {
-                $conn.query_drop("ROLLBACK")?;
+                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
                 Err(e)
             }
         }

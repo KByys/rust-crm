@@ -1,3 +1,4 @@
+mod customer;
 use std::collections::HashMap;
 
 use axum::{
@@ -126,16 +127,20 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn)?;
     let count: usize = match depart.as_str() {
-        "all" => conn.query::<i32, &str>(
-            "SELECT 1 FROM user u WHERE NOT EXISTS 
+        "all" => conn
+            .query::<i32, &str>(
+                "SELECT 1 FROM user u WHERE NOT EXISTS 
                 (SELECT 1 FROM leaver l WHERE l.id=u.id)",
-        )?.len(),
-        _ => conn.query::<i32, String>(format!(
-            "SELECT 1 FROM user u WHERE u.department='{}' AND NOT EXISTS 
+            )?
+            .len(),
+        _ => conn
+            .query::<i32, String>(format!(
+                "SELECT 1 FROM user u WHERE u.department='{}' AND NOT EXISTS 
                 (SELECT 1 FROM leaver l WHERE l.id=u.id)",
-            op::ternary!(depart.eq("my")
+                op::ternary!(depart.eq("my")
             => &u.department; &depart)
-        ))?.len(),
+            ))?
+            .len(),
     };
     Ok(Response::ok(json!(count)))
 }
@@ -161,7 +166,7 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
             }
             let users: Vec<User> = conn.query(
                 "SELECT u.* FROM user u WHERE NOT EXISTS 
-                   (SELECT 1 FROM leaver l WHERE l.id=u.id)"
+                   (SELECT 1 FROM leaver l WHERE l.id=u.id)",
             )?;
             let mut map: HashMap<String, Vec<User>> = HashMap::new();
             for u in users {
@@ -183,10 +188,12 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
                 return Err(Response::permission_denied());
             }
             let d = op::ternary!(depart.eq("my") => &u.department; &depart);
-            let users: Vec<User> = conn.query(format!(
+            let query = format!(
                 "SELECT u.* FROM user u WHERE u.department='{d}' AND NOT EXISTS 
-                    (SELECT 1 FROM leaver l WHERE l.id=u.id)"
-            ))?;
+                (SELECT 1 FROM leaver l WHERE l.id=u.id)"
+            );
+            println!("{}", query);
+            let users: Vec<User> = conn.query(query)?;
             vec![json!({
                 "department": d,
                 "data": users

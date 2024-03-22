@@ -1,9 +1,5 @@
 use crate::{
-    bearer,
-    database::{c_or_r, get_conn},
-    libs::{dser::deser_empty_to_none, gen_id, TimeFormat, TIME},
-    pages::account::get_user,
-    parse_jwt_macro, Response, ResponseResult,
+    bearer, commit_or_rollback, database::get_conn, libs::{dser::deser_empty_to_none, gen_id, TimeFormat, TIME}, pages::account::get_user, parse_jwt_macro, Response, ResponseResult
 };
 use axum::{
     extract::Path,
@@ -41,7 +37,7 @@ async fn add_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResu
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: InsertReportParams = serde_json::from_value(value)?;
-    c_or_r(__insert_report, &mut conn, (&data, &uid), false)?;
+    commit_or_rollback!(__insert_report, &mut conn, (&data, &uid))?;
     Ok(Response::empty())
 }
 
@@ -87,6 +83,7 @@ async fn send_report(header: HeaderMap, Path(id): Path<String>) -> ResponseResul
     conn.query_drop(format!("update report set send_time = '{send_time}' WHERE id = '{id}' AND applicant='{uid}' LIMIT 1"))?;
     Ok(Response::empty())
 }
+
 async fn delete_report(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
@@ -95,7 +92,7 @@ async fn delete_report(header: HeaderMap, Path(id): Path<String>) -> ResponseRes
         "select 1 from report where id = '{id}' and applicant='{uid}'"
     ))?;
     op::some!(key; ret Err(Response::permission_denied()));
-    c_or_r(__delete_report, &mut conn, &id, false)?;
+    commit_or_rollback!(__delete_report, &mut conn, &id)?;
     Ok(Response::empty())
 }
 fn __delete_report(conn: &mut PooledConn, id: &str) -> Result<(), Response> {

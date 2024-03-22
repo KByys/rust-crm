@@ -99,6 +99,7 @@ async fn delete_colleague(headers: HeaderMap, Path(id): Path<String>) -> Respons
     ))?;
     Ok(Response::empty())
 }
+
 async fn query_colleagues(Path(customer): Path<String>) -> ResponseResult {
     let mut conn = get_conn()?;
     let data: Vec<Colleague> = conn.query(format!(

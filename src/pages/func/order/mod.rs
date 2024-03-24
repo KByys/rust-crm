@@ -140,7 +140,7 @@ macro_rules! gen_number {
                 )?
                 .unwrap_or(0)
                 + 1;
-            $conn.exec_drop("insert into order_num (name, ty num) values (:name, :ty, :num) on duplicate key update num = :new_num", params! {
+            $conn.exec_drop("insert into order_num (name, ty, num) values (:name, :ty, :num) on duplicate key update num = :new_num", params! {
                 "name" => &pinyin,
                 "ty" => $ty,
                 "num" => number,

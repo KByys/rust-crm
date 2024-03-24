@@ -18,7 +18,7 @@ use crate::{
     bearer, commit_or_rollback,
     common::Person,
     database::get_conn,
-    libs::{dser::deser_empty_to_none, TimeFormat, TIME},
+    libs::{dser::deser_empty_to_none, gen_id, TimeFormat, TIME},
     mysql_stmt,
     pages::account::{get_user, User},
     parse_jwt_macro, Response, ResponseResult,
@@ -164,6 +164,7 @@ async fn __add_order(
         );
         order.number = gen_number!(conn, 0, &name);
     }
+    order.id = gen_id(&time, &format!("order{}", _user.name));
     check_repayment(conn, order)?;
     match order.status {
         1 | 2 => {

@@ -55,8 +55,10 @@ struct Order {
 }
 
 macro_rules! get {
-    ($map:expr, $name:expr) => {
+    ($map:expr, $name:expr) => { {
+        println!("{}", $name);
         mysql::prelude::FromValue::from_value($map.get($name)?.clone())
+    }
     };
 }
 
@@ -87,7 +89,7 @@ impl FromRow for Order {
             },
             payment_method: get!(map, "payment_method"),
             repayment: Repayment {
-                model: get!(map, "model"),
+                model: get!(map, "repayment_model"),
                 instalment: Vec::new()
             },
             product: Product {
@@ -104,7 +106,7 @@ impl FromRow for Order {
                 purchase_unit: get!(map, "purchase_unit")
             },
             invoice: Invoice {
-                required: get!(map, "required"),
+                required: get!(map, "invoice_required"),
                 ..Default::default()
             },
             ship: Vec::new(),
@@ -173,6 +175,12 @@ async fn __add_order(
             }
             if order.ship.is_empty() || order.ship.len() != order.product.inventory.len() {
                 return Err(Response::invalid_value("ship未设置或与产品未对应"));
+            }
+            let flag = order.ship.iter().any(|v| {
+                v.shipped && v.date.is_none()
+            });
+            if flag {
+                return Err(Response::invalid_value("shipped如果为true则必须设置date"));
             }
             let not_match = (0..order.ship.len())
                 .any(|i| order.product.inventory[i].storehouse != order.ship[i].storehouse);

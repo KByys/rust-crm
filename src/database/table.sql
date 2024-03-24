@@ -295,6 +295,7 @@ CREATE TABLE IF NOT EXISTS order_data(
     customer VARCHAR(150) NOT NULL,
     address TEXT,
     purchase_unit VARCHAR(100),
+    transaction_date VARCHAR(25) NULL,
     invoice_required INT NOT NULL,
     PRIMARY KEY (id)
 );

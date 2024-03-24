@@ -281,8 +281,8 @@ async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseRe
         join user u on u.id = o.salesman
         join customer c on c.id = o.customer
         join product p on p.id = o.product
-        order by desc o.create_time
         where o.id = ?
+        order by o.create_time desc
     ",
         (&uid,),
     )?;

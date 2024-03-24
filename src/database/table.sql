@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS product(
     cover VARCHAR(150) NULL,
     model VARCHAR(20) NOT NULL,
     unit VARCHAR(30) NOT NULL,
+    purchase_unit FLOAT NOT NULL,
     product_type VARCHAR(30) NOT NULL,
     price FLOAT NOT NULL,
     create_time VARCHAR(25) NOT NULL,
@@ -328,5 +329,5 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     original_amount FLOAT NOT NULL,
     date VARCHAR(25) NOT NULL,
     finish INT NOT NULL,
-    PRIMARY KEY (order_id, storehouse)
+    PRIMARY KEY (order_id, date)
 );

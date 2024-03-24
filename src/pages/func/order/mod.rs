@@ -162,7 +162,7 @@ async fn __add_order(
             "{}{}{}",
             order.salesman.name, order.product.name, order.customer.name
         );
-        order.number = gen_number!(conn, &name, 0);
+        order.number = gen_number!(conn, 0, &name);
     }
     check_repayment(conn, order)?;
     match order.status {

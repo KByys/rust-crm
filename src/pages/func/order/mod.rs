@@ -29,8 +29,9 @@ use self::{
 };
 
 pub fn order_router() -> Router {
-    Router::new().route("/order/add", post(add_order))
-    .route("/order/query", post(query_order))
+    Router::new()
+        .route("/order/add", post(add_order))
+        .route("/order/query", post(query_order))
 }
 
 #[derive(Deserialize, Serialize)]
@@ -51,15 +52,14 @@ struct Order {
     product: Product,
     customer: Customer,
     invoice: Invoice,
-    ship: Vec<Ship>,
+    ship: Ship,
 }
 
 macro_rules! get {
-    ($map:expr, $name:expr) => { {
+    ($map:expr, $name:expr) => {{
         println!("{}", $name);
         mysql::prelude::FromValue::from_value($map.get($name)?.clone())
-    }
-    };
+    }};
 }
 
 impl FromRow for Order {
@@ -96,7 +96,7 @@ impl FromRow for Order {
                 discount: get!(map, "discount"),
                 id: get!(map, "product"),
                 name: get!(map, "product_name"),
-                inventory: Vec::new(),
+                amount: get!(map, "amount"),
             },
             customer: Customer {
                 id: get!(map, "customer"),
@@ -109,7 +109,11 @@ impl FromRow for Order {
                 required: get!(map, "invoice_required"),
                 ..Default::default()
             },
-            ship: Vec::new(),
+            ship: Ship {
+                shipped: get!(map, "shipped"),
+                date: get!(map, "shipped_date"),
+                storehouse: get!(map, "shipped_storehouse")
+            },
         }));
         if let Some(order) = result {
             Ok(order)
@@ -173,19 +177,8 @@ async fn __add_order(
             if order.transaction_date.is_none() {
                 return Err(Response::invalid_value("transaction_date必须设置"));
             }
-            if order.ship.is_empty() || order.ship.len() != order.product.inventory.len() {
-                return Err(Response::invalid_value("ship未设置或与产品未对应"));
-            }
-            let flag = order.ship.iter().any(|v| {
-                v.shipped && v.date.is_none()
-            });
-            if flag {
-                return Err(Response::invalid_value("shipped如果为true则必须设置date"));
-            }
-            let not_match = (0..order.ship.len())
-                .any(|i| order.product.inventory[i].storehouse != order.ship[i].storehouse);
-            if not_match {
-                return Err(Response::invalid_value("ship与产品inventory没有对应"));
+            if order.ship.shipped && order.ship.date.is_none() {
+                return Err(Response::invalid_value("shipped为true时，date必须设置"));
             }
             if order.invoice.required {
                 let stmt = mysql_stmt!(
@@ -232,12 +225,16 @@ async fn __add_order(
         repayment_model,
         payment_method,
         product,
+        amount,
         discount,
         transaction_date,
         customer,
         address,
         purchase_unit,
         invoice_required,
+        shipped,
+        shipped_date,
+        shipped_storehouse,
     );
     conn.exec_drop(
         stmt,
@@ -257,11 +254,14 @@ async fn __add_order(
             "transaction_date" => &order.transaction_date,
             "address" => &order.customer.address,
             "purchase_unit" => &order.customer.purchase_unit,
-            "invoice_required" => &order.invoice.required
+            "invoice_required" => &order.invoice.required,
+            "amount" => &order.product.amount,
+            "shipped" => &order.ship.shipped,
+            "shipped_date" => &order.ship.date,
+            "shipped_storehouse" => &order.ship.storehouse
         },
     )?;
 
-    order.product.add_inventory(conn, &order.id)?;
     order.repayment.smart_insert(&order.id, conn)?;
     Ok(())
 }
@@ -298,7 +298,6 @@ async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseRe
     )?;
     for o in &mut data {
         o.repayment.smart_query(&o.id, &mut conn)?;
-        o.product.query_inventory(&o.id, &mut conn)?;
         if o.invoice.required {
             if let Some(invoice) = conn.query_first(format!(
                 "select *, 1 as required from invoice where order_id = '{}' limit 1",
@@ -307,10 +306,6 @@ async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseRe
                 o.invoice = invoice;
             }
         }
-        o.ship = conn.query(format!(
-            "select * from ship where order_id = '{}' order by storehouse",
-            o.id
-        ))?;
     }
     Ok(Response::ok(json!(data)))
 }

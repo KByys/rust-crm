@@ -24,7 +24,7 @@ pub struct Product {
     #[serde(deserialize_with = "deserialize_f32_max_1")]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub discount: f32,
-    pub inventory: Vec<Inventory>,
+    pub amount: usize
 }
 
 impl Product {
@@ -43,44 +43,10 @@ impl Product {
         })
     }
     pub fn price_sum(&self, price: f32) -> f32 {
-        self.inventory.iter().map(|v| v.amount as f32 * price).sum()
+        self.amount as f32 * price
     }
 
     pub fn price_sum_with_discount(&self, price: f32) -> f32 {
         self.price_sum(price) * self.discount
     }
-    pub fn query_inventory(&mut self, order: &str, conn: &mut PooledConn) -> mysql::Result<()> {
-        self.inventory = conn.exec(
-            "select storehouse, amount 
-                from order_product_inventory 
-                where order_id = ? 
-                order by storehouse",
-            (order,),
-        )?;
-
-        Ok(())
-    }
-    pub fn add_inventory(&self, conn: &mut PooledConn, order: &str) -> mysql::Result<()> {
-        conn.exec_batch(
-            "insert into order_product_inventory 
-        (order_id, amount, storehouse)
-        values
-        (:order_id, :amount, :storehouse)
-        ",
-            self.inventory.iter().map(|v| {
-                params! {
-                    "order_id" => order,
-                    "amount" => v.amount,
-                    "storehouse" => &v.storehouse
-                }
-            }),
-        )
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, FromRow)]
-pub struct Inventory {
-    #[serde(deserialize_with = "deserialize_storehouse")]
-    pub storehouse: String,
-    pub amount: i32,
 }

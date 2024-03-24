@@ -297,6 +297,11 @@ CREATE TABLE IF NOT EXISTS order_data(
     purchase_unit VARCHAR(100),
     transaction_date VARCHAR(25) NULL,
     invoice_required INT NOT NULL,
+    amount INT NOT NULL,
+    shipped INT NOT NULL,
+    shipped_date VARCHAR(25) NULL,
+    shipped_storehouse VARCHAR(30) NOT NULL,
+
     PRIMARY KEY (id)
 );
 
@@ -310,19 +315,6 @@ CREATE TABLE IF NOT EXISTS invoice(
     PRIMARY KEY (number)
 );
 
-CREATE TABLE IF NOT EXISTS ship(
-    order_id VARCHAR(150) NOT NULL,
-    shipped INT NOT NULL,
-    date VARCHAR(25) NULL,
-    storehouse VARCHAR(30) NOT NULL,
-    PRIMARY KEY (order_id, storehouse)
-);
-CREATE TABLE IF NOT EXISTS order_product_inventory(
-    order_id VARCHAR(150) NOT NULL,
-    amount INT NOT NULL,
-    storehouse VARCHAR(30) NOT NULL,
-    PRIMARY KEY (order_id, storehouse)
-);
 
 CREATE TABLE IF NOT EXISTS order_instalment(
     order_id VARCHAR(150) NOT NULL,

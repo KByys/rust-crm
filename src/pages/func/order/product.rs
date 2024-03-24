@@ -14,7 +14,7 @@ where
     if let Ok(f) = value.parse::<f32>() {
         op::ternary!(f <= 1.0 => Ok(f), Err(serde::de::Error::custom("discount最大值为1")))
     } else {
-        Err(serde::de::Error::custom("price不是浮点数格式"))
+        Err(serde::de::Error::custom("discount不是浮点数格式"))
     }
 }
 #[derive(Deserialize, Serialize)]

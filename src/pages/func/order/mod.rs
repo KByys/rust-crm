@@ -277,7 +277,7 @@ async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseRe
     let mut data: Vec<Order> = conn.exec(
         "select o.*, u.name as salesman_name, c.name as customer_name, 
         c.company, p.name as product_name
-        from order o
+        from order_data o
         join user u on u.id = o.salesman
         join customer c on c.id = o.customer
         join product p on p.id = o.product

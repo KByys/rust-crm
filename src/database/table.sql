@@ -20,6 +20,7 @@ VALUES
     ('invoice_type', '普通发票', '0000-00-00 00:00:00'),
     ('invoice_type', '专业发票', '0000-00-00 00:00:01'),
     ('invoice_type', '增值税专用发票', '0000-00-00 00:00:02');
+
 INSERT
     IGNORE INTO drop_down_box (name, value, create_time)
 VALUES
@@ -271,6 +272,7 @@ CREATE TABLE IF NOT EXISTS report_reply(
     applicant VARCHAR(150) NOT NULL,
     PRIMARY KEY (id)
 );
+
 -- 记录订单和发票的编号顺序
 CREATE TABLE IF NOT EXISTS order_num(
     name VARCHAR(150) NOT NULL,
@@ -300,8 +302,7 @@ CREATE TABLE IF NOT EXISTS order_data(
     amount INT NOT NULL,
     shipped INT NOT NULL,
     shipped_date VARCHAR(25) NULL,
-    shipped_storehouse VARCHAR(30) NOT NULL,
-
+    shipped_storehouse VARCHAR(30) NULL,
     PRIMARY KEY (id)
 );
 
@@ -314,7 +315,6 @@ CREATE TABLE IF NOT EXISTS invoice(
     description TEXT,
     PRIMARY KEY (number)
 );
-
 
 CREATE TABLE IF NOT EXISTS order_instalment(
     order_id VARCHAR(150) NOT NULL,

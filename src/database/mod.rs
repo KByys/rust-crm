@@ -88,7 +88,7 @@ macro_rules! mysql_stmt {
                     format!("{},:{}",out, v)
                 }
             });
-            let stmt = format!("insert into {} ({values1} values {values2})", $table);
+            let stmt = format!("insert into {} ({values1}) values ({values2})", $table);
             println!("{stmt}");
             stmt
         }

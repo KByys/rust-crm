@@ -233,6 +233,7 @@ async fn __add_order(
         payment_method,
         product,
         discount,
+        transaction_date,
         customer,
         address,
         purchase_unit,
@@ -253,6 +254,7 @@ async fn __add_order(
             "discount" => &order.product.discount,
             "repayment_model" => &order.repayment.model,
             "customer" => &order.customer.id,
+            "transaction_date" => &order.transaction_date,
             "address" => &order.customer.address,
             "purchase_unit" => &order.customer.purchase_unit,
             "invoice_required" => &order.invoice.required

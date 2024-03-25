@@ -8,5 +8,5 @@ use crm_rust::verify_perms;
 
 #[tokio::main]
 async fn main() {
-    
+
 }

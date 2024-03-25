@@ -436,7 +436,7 @@ async fn query_product(Json(value): Json<Value>) -> ResponseResult {
                 and storehouse {store} order by storehouse",
             product.id
         ))?;
-        product.custom_fields = get_custom_fields(&mut conn, &product.id, 1)?;
+        // product.custom_fields = get_custom_fields(&mut conn, &product.id, 1)?;
         products.push(product);
     }
     Ok(Response::ok(json!(products)))

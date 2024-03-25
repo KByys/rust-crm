@@ -1,5 +1,6 @@
 mod order;
 mod product;
+pub use product::DEFAULT_PRODUCT_COVER;
 mod report;
 // mod report;
 mod sea;

@@ -12,7 +12,7 @@ where
     if let Ok(f) = value.parse::<f32>() {
         Ok(f)
     } else {
-        Err(serde::de::Error::custom("price不是浮点数格式"))
+        Err(serde::de::Error::custom("浮点数格式格式错误，请检查所有字符串浮点数是否格式正确"))
     }
 }
 
@@ -115,6 +115,7 @@ where
     D: Deserializer<'de>,
 {
     let name: String = Deserialize::deserialize(de)?;
+    println!("name is {}", name);
     if name.is_empty() {
         return Ok(None)
     }

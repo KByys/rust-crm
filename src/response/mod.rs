@@ -10,7 +10,7 @@ use axum::{
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json::{json, Value};
 
-use crate::libs::parse_file_link;
+use crate::{libs::parse_file_link, pages::func::DEFAULT_PRODUCT_COVER};
 /// 响应数据
 #[derive(Debug)]
 pub struct Response {
@@ -181,6 +181,17 @@ impl BodyFile {
         parent: impl AsRef<Path>,
         url: &str,
     ) -> Result<Self, (StatusCode, String)> {
+        match url {
+            _u if url == DEFAULT_PRODUCT_COVER.0 => {
+                return Ok(Self {
+                    body: DEFAULT_PRODUCT_COVER.1.to_vec(),
+                    filename: "default.png".to_owned(),
+                    mime: "image/png",
+                });
+            }
+            _ => (),
+        }
+
         let mut path = parent.as_ref().to_path_buf();
         path.push(url);
         println!("{}", path.display());

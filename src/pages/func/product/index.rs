@@ -28,9 +28,11 @@ use mysql::{params, prelude::Queryable, PooledConn};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+pub static DEFAULT: (&str, &[u8]) = ("default_product_cover", include_bytes!("default.png"));
 pub fn product_router() -> Router {
     Router::new()
         .route("/product/add", post(add_product))
+        .route("/product/add/json", post(add_product_json))
         .route("/product/update", post(update_product))
         .route("/product/update/store/:id", post(update_product_store))
         .route("/product/update/json", post(update_product_json))
@@ -39,7 +41,6 @@ pub fn product_router() -> Router {
         .route("/product/app/list/data", post(query_product))
         .route("/product/query/:id", get(query_by))
         .route("/product/cover/:cover", get(get_cover))
-
 }
 use crate::libs::dser::deserialize_storehouse;
 #[derive(Debug, Serialize, Deserialize, mysql_common::prelude::FromRow)]
@@ -104,6 +105,9 @@ struct ProductParams {
     model: String,
     /// 单位
     unit: String,
+    #[serde(deserialize_with = "deser_f32")]
+    #[serde(serialize_with = "serialize_f32_to_string")]
+    purchase_price: f32,
     product_type: String,
     #[serde(deserialize_with = "deser_f32")]
     #[serde(serialize_with = "serialize_f32_to_string")]
@@ -132,14 +136,33 @@ async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let part = parse_multipart(part).await?;
     let data: ProductParams = serde_json::from_str(&part.json)?;
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
-    commit_or_rollback!(async __insert, &mut conn, (data, file, &user.role))?;
+    commit_or_rollback!(async __insert, &mut conn, (data, Some(file), &user.role))?;
+
+    Ok(Response::empty())
+}
+
+async fn add_product_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&id, &mut conn)?;
+    if !verify_perms!(
+        &user.role,
+        StorehouseGroup::NAME,
+        StorehouseGroup::ADD_PRODUCT
+    ) {
+        return Err(Response::permission_denied());
+    }
+
+    let data: ProductParams = serde_json::from_value(value)?;
+    commit_or_rollback!(async __insert, &mut conn, (data, None, &user.role))?;
 
     Ok(Response::empty())
 }
 
 async fn __insert(
     conn: &mut PooledConn,
-    (mut data, part, role): (ProductParams, &FilePart, &str),
+    (mut data, part, role): (ProductParams, Option<&FilePart>, &str),
 ) -> Result<(), Response> {
     let time = TIME::now()?;
     data.id = gen_id(&time, &data.name);
@@ -158,14 +181,18 @@ async fn __insert(
     ON DUPLICATE KEY UPDATE num = {n}"
     ))?;
     data.create_time = time.format(TimeFormat::YYYYMMDD_HHMMSS);
-    let link = gen_file_link(&time, part.filename());
+    let link = if let Some(part) = part {
+        gen_file_link(&time, part.filename())
+    } else {
+        DEFAULT.0.to_owned()
+    };
     conn.exec_drop(
         "INSERT INTO product (id, num, name, 
                 specification, cover, model, unit,
                 product_type, price, create_time, 
-                barcode, explanation) VALUES (
+                barcode, explanation, purchase_price) VALUES (
                 :id, :num, :name, :specification, :cover, :model, :unit,
-                :product_type, :price, :create_time, :barcode, :explanation
+                :product_type, :price, :create_time, :barcode, :explanation, :purchase_price
         )",
         params! {
             "id" => &data.id,
@@ -180,12 +207,15 @@ async fn __insert(
             "explanation" => data.explanation,
             "create_time" => data.create_time,
             "barcode" => data.barcode,
+            "purchase_price" => data.purchase_price
 
         },
     )?;
     first_update_store(conn, &data.id, &data.inventory.inner, role).await?;
     __insert_custom_fields(conn, &data.custom_fields.inner, 1, &data.id)?;
-    std::fs::write(format!("resources/product/cover/{link}"), &part.bytes)?;
+    if let Some(part) = part {
+        std::fs::write(format!("resources/product/cover/{link}"), &part.bytes)?;
+    }
     Ok(())
 }
 
@@ -329,7 +359,8 @@ fn __update(
                 product_type=:product_type, 
                 price=:price,
                 barcode=:barcode, 
-                explanation=:explanation 
+                explanation=:explanation,
+                purchase_price=:purchase_price
                 WHERE id = '{}' LIMIT 1",
             data.id
         ),
@@ -340,6 +371,7 @@ fn __update(
             "product_type" => data.product_type, "price" => data.price,
             "explanation" => &data.explanation,
             "barcode" => data.barcode,
+            "purchase_price" => data.purchase_price,
         },
     )?;
 
@@ -373,12 +405,26 @@ async fn query_product(Json(value): Json<Value>) -> ResponseResult {
     } else {
         format!("= '{}'", &data.storehouse)
     };
-    let query = format!(
-        "select pr.*, 1 as custom_fields, 1 as inventory from product pr 
-        where pr.product_type {ty} and 
-        exists (select 1 from product_store ps 
-            where ps.product = pr.id and ps.storehouse {store} and ps.amount {stock})"
-    );
+    let query = if data.stock == 0 && data.storehouse.is_empty() {
+        format!(
+            "select pr.*, 1 as custom_fields, 1 as inventory from product pr 
+            where pr.product_type {ty} order by pr.create_time"
+        )
+    } else if data.storehouse.eq("null") {
+        format!(
+            "select pr.*, 1 as custom_fields, 1 as inventory from product pr 
+            where pr.product_type {ty} and 
+            not exists (select 1 from product_store ps where ps.product = pr.id) order by pr.create_time"
+        )
+    } else {
+        format!(
+            "select pr.*, 1 as custom_fields, 1 as inventory from product pr 
+            where pr.product_type {ty} and 
+            exists (select 1 from product_store ps 
+                where ps.product = pr.id and ps.storehouse {store} and ps.amount {stock}) order by pr.create_time"
+        )
+    };
+
     println!("{query}");
     let tmp: Vec<ProductParams> = conn.query(query)?;
     let mut products = Vec::new();
@@ -457,7 +503,9 @@ fn __delete_product(conn: &mut PooledConn, id: &str) -> Result<(), Response> {
     conn.query_drop(format!("DELETE FROM product_store WHERE product = '{id}'"))?;
 
     if let Some(cover) = cover {
-        std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
+        if !cover.eq(DEFAULT.0) {
+            std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
+        }
     }
     Ok(())
 }

@@ -6,7 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, database::{c_or_r, get_conn}, debug_info, libs::time::{TimeFormat, TIME}, parse_jwt_macro, perm::{action::OtherGroup, get_role}, verify_perms, Response, ResponseResult
+    bearer, commit_or_rollback, database::{c_or_r, get_conn}, debug_info, libs::time::{TimeFormat, TIME}, parse_jwt_macro, perm::{action::OtherGroup, get_role}, verify_perms, Response, ResponseResult
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -173,8 +173,7 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     if !matches!(data.display.as_str(), "0" | "1" | "2") {
         return Err(Response::invalid_value("display 非法"));
     }
-    conn.query_drop("BEGIN")?;
-    c_or_r(_insert_field, &mut conn, &data, false)?;
+    commit_or_rollback!(_insert_field, &mut conn, &data)?;
     Ok(Response::empty())
 }
 fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Response> {
@@ -436,3 +435,12 @@ pub async fn query_custom_fields(Path((ty, id)): Path<(u8, String)>) -> Response
     let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;
     Ok(Response::ok(json!(data)))
 }
+
+pub async fn query_box(Path((ty, display)): Path<(u8, String)>) -> ResponseResult {
+    unsafe {
+        let option = STATIC_CUSTOM_BOX_OPTIONS.get_boxes(ty as usize);
+        Ok(Response::ok(json!(option.get(display.as_str()))))
+    }
+}
+
+

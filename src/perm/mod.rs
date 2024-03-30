@@ -129,6 +129,9 @@ unsafe fn role_manager() -> PermissionGroupMap {
                 (OtherGroup::QUERY_SIGN_IN, vec!["all".to_owned()]),
                 (OtherGroup::SEA_RULE, vec!["all".to_owned()]),
                 (OtherGroup::COMPANY_STAFF_DATA, vec!["all".to_owned()]),
+                (OtherGroup::QUERY_ORDER, vec!["all".to_owned()]),
+                (OtherGroup::CUSTOM_FIELD, Vec::new()),
+                (OtherGroup::DROP_DOWN_BOX, Vec::new()),
             ]
             .into_iter()
             .map(|(name, key)| (name.to_owned(), key))
@@ -186,6 +189,7 @@ unsafe fn role_adm() -> PermissionGroupMap {
             [
                 (OtherGroup::QUERY_SIGN_IN, vec![]),
                 (OtherGroup::SEA_RULE, vec![]),
+                (OtherGroup::QUERY_ORDER, vec![]),
             ]
             .into_iter()
             .map(|(name, key)| (name.to_owned(), key))

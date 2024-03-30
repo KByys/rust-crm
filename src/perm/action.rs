@@ -109,29 +109,15 @@ impl FinanceGroup {
     pub const QUERY: &str = "query";
 }
 
-// #[forbid(unused)]
-// pub static APPROVAL: [&str; 2] = ["query_approval", "receive_approval"];
-// pub struct ApprovalGroup;
-// impl ApprovalGroup {
-//     pub const QUERY_APPROVAL: &str = "query_approval";
-//     pub const RECEIVE_APPROVAL: &str = "receive_approval";
-// }
-
-// #[forbid(unused)]
-// pub static FORM: [&str; 1] = [FormGroup::QUERT];
-// pub struct FormGroup;
-
-// impl FormGroup {
-//     pub const QUERT: &str = "query";
-// }
 
 #[forbid(unused)]
-pub static OTHER_GROUP: [&str; 5] = [
+pub static OTHER_GROUP: [&str; 6] = [
     OtherGroup::QUERY_SIGN_IN,
     OtherGroup::CUSTOM_FIELD,
     OtherGroup::DROP_DOWN_BOX,
     OtherGroup::SEA_RULE,
     OtherGroup::COMPANY_STAFF_DATA,
+    OtherGroup::QUERY_ORDER
 ];
 pub struct OtherGroup;
 
@@ -142,4 +128,5 @@ impl OtherGroup {
     pub const DROP_DOWN_BOX: &str = "drop_down_box";
     pub const SEA_RULE: &str = "sea_rule";
     pub const COMPANY_STAFF_DATA: &str = "company_staff_data";
+    pub const QUERY_ORDER: &str = "query_order";
 }

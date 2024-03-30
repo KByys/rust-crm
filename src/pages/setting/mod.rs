@@ -34,4 +34,5 @@ pub fn setting_router() -> Router {
         .route("/customize/infos", get(custom::get_custom_info))
         .route("/customize/info/get/:ty", get(custom::get_custom_info_with))
         .route("/custom/fields/:ty/:id", get(custom::query_custom_fields))
+        .route("/custom/fields/box/:ty/:display", get(custom::query_box))
 }

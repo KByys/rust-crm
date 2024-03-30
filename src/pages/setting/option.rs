@@ -5,7 +5,7 @@ use mysql::{prelude::Queryable, PooledConn};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer,
+    bearer, commit_or_rollback,
     database::{c_or_r, get_conn, Database},
     debug_info,
     libs::time::{TimeFormat, TIME},
@@ -40,7 +40,7 @@ pub const DROP_DOWN_BOX_ALL: [&str; 17] = [
     "payment",
     "order_progress",
     "customer_level",
-    "invoice_type"
+    "invoice_type",
 ];
 
 macro_rules! get_drop_down_box {
@@ -268,7 +268,7 @@ pub async fn update_option_value(headers: HeaderMap, Json(value): Json<Value>) -
     let (id, mut conn, info) = parse_option!(headers, value, true);
     debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:#?}", id, info));
     // conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    c_or_r(_update, &mut conn, &info, false)?;
+    commit_or_rollback!(_update, &mut conn, &info)?;
 
     Ok(Response::empty())
 }
@@ -284,19 +284,26 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
             return Err(Response::already_exist("修改的数据不能重复"));
         }
     }
-    if name == "department" {
-        if param.info.old_value.eq("总经办") || param.info.new_value.eq("总经办") {
-            return Err(Response::invalid_value("总经办这个部门不允许被修改"));
+    match name {
+        "department" => {
+            if param.info.old_value.eq("总经办") || param.info.new_value.eq("总经办") {
+                return Err(Response::invalid_value("总经办这个部门不允许被修改"));
+            }
+            conn.query_drop(format!(
+                "UPDATE user SET department = '{}' WHERE department = '{}'",
+                param.info.new_value, param.info.old_value
+            ))?;
         }
-        conn.query_drop(format!(
-            "UPDATE user SET department = '{}' WHERE department = '{}'",
-            param.info.new_value, param.info.old_value
-        ))?;
-    } else if name == "customer_level" {
-        let old_level = Level::from(param.info.old_value.as_str());
-        let mut new_level = split_level(&param.info.new_value);
-        new_level.level = old_level.level;
-        new_value = new_level.to_string();
+        "customer_level" => {
+            let old_level = Level::from(param.info.old_value.as_str());
+            let mut new_level = split_level(&param.info.new_value);
+            new_level.level = old_level.level;
+            new_value = new_level.to_string();
+        }
+        "storehouse" => {
+            update_storehouse(conn, &param.info.old_value, &param.info.new_value)?;
+        }
+        _ => {}
     }
 
     conn.query_drop(format!(
@@ -310,8 +317,20 @@ fn _update(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Respo
     Ok(())
 }
 
-pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) 
--> ResponseResult {
+fn update_storehouse(conn: &mut PooledConn, old: &str, new: &str) -> mysql::Result<()> {
+    conn.exec_drop(
+        "update product_store set storehouse = ? where storehouse = ?",
+        (new, old),
+    )?;
+    conn.exec_drop(
+        "update order_data set shipped_storehouse = ? where shipped_storehouse = ?",
+        (new, old),
+    )?;
+
+    Ok(())
+}
+
+pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let (id, mut conn, info) = parse_option!(headers, value, true);
     debug_info(format!("修改下拉框操作, 操作者：{}, 数据:{:#?}", id, info));
     let name = *get_drop_down_box!(info.ty);
@@ -325,26 +344,32 @@ pub async fn delete_option_value(headers: HeaderMap, Json(value): Json<Value>)
             }
         }
     }
-    conn.query_drop(Database::SET_FOREIGN_KEY_0)?;
-    c_or_r(_delete, &mut conn, &info, false)?;
+    commit_or_rollback!(_delete, &mut conn, (&info, name))?;
     unsafe {
         DROP_DOWN_BOX.init(&mut conn)?;
         println!("{:#?}", DROP_DOWN_BOX);
     }
     Ok(Response::empty())
 }
-fn _delete(conn: &mut PooledConn, param: &ReceiveOptionInfo) -> Result<(), Response> {
-    let name = *get_drop_down_box!(param.ty);
-    if name.eq("department") {
-        conn.query_drop(format!(
-            "UPDATE user SET department = '{}' WHERE department = '{}'",
-            param.info.next_value, param.info.delete_value
-        ))?;
+fn _delete(
+    conn: &mut PooledConn,
+    (param, name): (&ReceiveOptionInfo, &str),
+) -> Result<(), Response> {
+    match name {
+        "department" => {
+            conn.query_drop(format!(
+                "UPDATE user SET department = '{}' WHERE department = '{}'",
+                param.info.next_value, param.info.delete_value
+            ))?;
+        }
+        "storehouse" => {
+            conn.exec_drop(
+                "delete from product_store where storehouse = ?",
+                (&param.info.delete_value,),
+            )?;
+        }
+        _ => {}
     }
-    println!(
-        "DELETE FROM drop_down_box WHERE name = '{}' AND value = '{}' LIMIT 1",
-        name, param.info.delete_value
-    );
     conn.query_drop(format!(
         "DELETE FROM drop_down_box WHERE name = '{}' AND value = '{}' LIMIT 1",
         name, param.info.delete_value

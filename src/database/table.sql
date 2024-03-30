@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS product(
     product_type VARCHAR(30) NOT NULL,
     price FLOAT NOT NULL,
     create_time VARCHAR(25) NOT NULL,
-    barcode VARCHAR(20) NOT NULL,
+    barcode VARCHAR(50) NOT NULL,
     explanation TEXT,
     PRIMARY KEY (id)
 );

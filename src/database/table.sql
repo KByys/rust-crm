@@ -324,3 +324,18 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     finish INT NOT NULL,
     PRIMARY KEY (order_id, date)
 );
+-- 全公司订单视图
+create view company_order as
+select
+    o.*,
+    u.name as salesman_name,
+    c.name as customer_name,
+    c.company,
+    p.name as product_name
+from
+    order_data o
+    join user u on u.id = o.salesman
+    join customer c on c.id = o.customer
+    join product p on p.id = o.product
+order by
+    o.create_time desc

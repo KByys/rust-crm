@@ -21,7 +21,9 @@ use crate::{
     libs::{dser::deser_empty_to_none, gen_id, TimeFormat, TIME},
     mysql_stmt,
     pages::account::{get_user, User},
-    parse_jwt_macro, Response, ResponseResult,
+    parse_jwt_macro,
+    perm::action::OtherGroup,
+    verify_perms, Response, ResponseResult,
 };
 
 use self::{
@@ -210,6 +212,7 @@ async fn __add_order(
         }
         _ => {
             // TODO
+            // 目前没有什么要写
         }
     }
 
@@ -276,15 +279,39 @@ fn check_repayment(conn: &mut PooledConn, order: &Order) -> Result<(), Response>
 
     Ok(())
 }
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct QueryParams {}
+struct QueryParams {
+    ty: u8,
+    data: String,
+}
 
-async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseResult {
-    let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
-    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let mut data: Vec<Order> = conn.exec(
+async fn query_person_order(
+    conn: &mut PooledConn,
+    param: &QueryParams,
+    user: &User,
+) -> Result<Vec<Order>, Response> {
+    let id = if param.data.eq("my") || user.id == param.data {
+        &user.id
+    } else {
+        let u = get_user(&param.data, conn)?;
+        if u.department == user.department {
+            if !verify_perms!(&user.role, OtherGroup::NAME, OtherGroup::QUERY_ORDER) {
+                return Err(Response::permission_denied());
+            }
+            &param.data
+        } else if verify_perms!(
+            &user.role,
+            OtherGroup::NAME,
+            OtherGroup::QUERY_ORDER,
+            Some(["all"].as_slice())
+        ) {
+            &param.data
+        } else {
+            return Err(Response::permission_denied());
+        }
+    };
+
+    conn.exec(
         "select o.*, u.name as salesman_name, c.name as customer_name, 
         c.company, p.name as product_name
         from order_data o
@@ -294,8 +321,71 @@ async fn query_order(header: HeaderMap, Json(_value): Json<Value>) -> ResponseRe
         where o.salesman = ?
         order by o.create_time desc
     ",
-        (&uid,),
-    )?;
+        (&id,),
+    )
+    .map_err(Into::into)
+}
+
+async fn query_department_order(
+    conn: &mut PooledConn,
+    param: &QueryParams,
+    user: &User,
+) -> Result<Vec<Order>, Response> {
+    if !verify_perms!(&user.role, OtherGroup::NAME, OtherGroup::QUERY_ORDER) {
+        return Err(Response::permission_denied());
+    }
+    let depart = if param.data.eq("my") || user.department == param.data {
+        &user.department
+    } else if verify_perms!(
+        &user.role,
+        OtherGroup::NAME,
+        OtherGroup::QUERY_ORDER,
+        Some(["all"].as_slice())
+    ) {
+        &param.data
+    } else {
+        return Err(Response::permission_denied());
+    };
+
+    conn.exec(
+        "select o.*, u.name as salesman_name, c.name as customer_name, 
+        c.company, p.name as product_name
+        from order_data o
+        join user u on u.id = o.salesman and u.department = ?
+        join customer c on c.id = o.customer
+        join product p on p.id = o.product
+        order by o.create_time desc
+    ",
+        (&depart,),
+    )
+    .map_err(Into::into)
+}
+
+async fn query_company_order(conn: &mut PooledConn, user: &User) -> Result<Vec<Order>, Response> {
+    if !verify_perms!(
+        &user.role,
+        OtherGroup::NAME,
+        OtherGroup::QUERY_ORDER,
+        Some(["all"].as_slice())
+    ) {
+        return Err(Response::permission_denied());
+    }
+    conn.query("select * from company_order")
+        .map_err(Into::into)
+}
+
+async fn query_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
+    let bearer = bearer!(&header);
+    let mut conn = get_conn()?;
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn)?;
+    let param: QueryParams = serde_json::from_value(value)?;
+    let mut data = match param.ty {
+        0 => query_person_order(&mut conn, &param, &user).await?,
+        1 => query_department_order(&mut conn, &param, &user).await?,
+        2 => query_company_order(&mut conn, &user).await?,
+        _ => return Ok(Response::empty()),
+    };
     for o in &mut data {
         o.repayment.smart_query(&o.id, &mut conn)?;
         if o.invoice.required {

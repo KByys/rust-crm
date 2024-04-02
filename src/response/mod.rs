@@ -152,7 +152,7 @@ impl From<base64::DecodeError> for Response {
         Response::internal_server_error(format!("base64解码错误，具体信息为：{value}"))
     }
 }
-
+#[derive(Default)]
 pub struct BodyFile {
     body: Vec<u8>,
     filename: String,
@@ -177,6 +177,9 @@ impl axum::response::IntoResponse for BodyFile {
 }
 
 impl BodyFile {
+    pub fn new(body: Vec<u8>) -> Self {
+        Self { body, ..Default::default() }
+    }
     pub fn new_with_base64_url(
         parent: impl AsRef<Path>,
         url: &str,

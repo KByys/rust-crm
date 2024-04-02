@@ -28,7 +28,7 @@ async fn main() {
         )
         .layer(DefaultBodyLimit::max(50 * 1024 * 1024));
 
-    let tcp = TcpListener::bind("0.0.0.0:4444").await.unwrap();
+    let tcp = TcpListener::bind("0.0.0.0:80").await.unwrap();
     axum::serve(tcp, router).await.unwrap();
 }
 async fn get_version() -> (StatusCode, String) {

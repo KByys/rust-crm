@@ -24,7 +24,6 @@ use serde_json::{json, Value};
 pub fn index_router() -> Router {
     Router::new()
         .route("/report/add", post(add_report))
-        .route("/report/send/:id", post(send_report))
         .route("/report/read", post(read_report))
         .route("/report/update", post(update_report))
         .route("/report/delete/:id", delete(delete_report))
@@ -39,7 +38,6 @@ struct InsertReportParams {
     #[serde(deserialize_with = "deser_empty_to_none")]
     ac: Option<String>,
     contents: String,
-    send: bool,
 }
 
 async fn add_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
@@ -61,10 +59,7 @@ fn __insert_report(
 ) -> Result<(), Response> {
     let time = TIME::now()?;
     let id = gen_id(&time, "report");
-    let send_time = op::ternary!(params.send =>
-        mysql::Value::Bytes(time.format(TimeFormat::YYYYMMDD_HHMMSS).into_bytes()),
-        mysql::Value::NULL
-    );
+    let send_time = mysql::Value::Bytes(time.format(TimeFormat::YYYYMMDD_HHMMSS).into_bytes());
 
     conn.exec_drop(
         "insert into report 
@@ -91,31 +86,6 @@ fn __insert_report(
         ))?;
     }
     Ok(())
-}
-
-async fn send_report(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
-    let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
-    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&uid, &mut conn).await?;
-    let send_time = TIME::now()?.format(TimeFormat::YYYYMMDD_HHMMSS);
-    log!("{}-{} 请求发送报告 {id}", user.department, user.name);
-    let key: Option<i32> = conn.exec_first(
-        "select 1 from report where id = '{}' and applicant = ? limit 1",
-        (&uid,),
-    )?;
-    if key.is_some() {
-        conn.query_drop(format!("update report set send_time = '{send_time}' WHERE id = '{id}' AND applicant='{uid}' LIMIT 1"))?;
-        log!("{}-{} 成功发送报告 {id}", user.department, user.name);
-        Ok(Response::empty())
-    } else {
-        log!(
-            "{}-{} 发送报告 {id} 失败，该报告不存在或者不是本人的报告",
-            user.department,
-            user.name
-        );
-        Err(Response::permission_denied())
-    }
 }
 
 async fn delete_report(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
@@ -192,8 +162,9 @@ async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
         and processing_time is NULL LIMIT 1",
         data.opinion, data.id
     );
+    // println!("{update}");
     conn.query_drop(update)?;
-    log!("{}-{} 成功批阅报告 {}", user.department, user.name, data.id);
+    log!("{}-{} 成功批阅报告 {}, 报告状态 {}", user.department, user.name, data.id, status);
     Ok(Response::empty())
 }
 #[derive(Deserialize)]
@@ -252,13 +223,11 @@ fn __update_report(conn: &mut PooledConn, param: &UpdateParams) -> Result<(), Re
 #[derive(Debug, Deserialize)]
 struct QueryParams {
     ty: u8,
-    send_status: i32,
     #[serde(deserialize_with = "deserialize_time_scope")]
     send_time: (String, String),
-    processed_status: i32,
+    status: i32,
     #[serde(deserialize_with = "deserialize_time_scope")]
     processing_time: (String, String),
-    approved: i32,
     applicant: String,
     reviewer: String,
     cc: String,
@@ -357,7 +326,7 @@ fn __query_statement(
         ",
         param.limit
     );
-    println!("{}", query);
+    // println!("{}", query);
     Ok(query)
 }
 
@@ -376,16 +345,6 @@ fn __query(
     }
     let st = &params.send_time;
     let pt = &params.processing_time;
-    let status = match params.processed_status {
-        0 | 2 => match params.approved {
-            0 => " = 0",
-            1 => " = 1",
-            2 => " < 3",
-            _ => return Err(Response::dissatisfy("approved 的值非法")),
-        },
-        1 => " = 2",
-        _ => return Err(Response::dissatisfy("processed_status 值错误")),
-    };
     let pt = if pt.0.eq("0000-00-00") && pt.1.eq("9999-99-99") {
         "r.processing_time is null or r.processing_time is not null".to_string()
     } else {
@@ -394,23 +353,13 @@ fn __query(
             pt.0, pt.1
         )
     };
-    let st = if st.0.eq("0000-00-00") && st.1.eq("9999-99-99") {
-        "r.send_time is null or r.send_time is not null".to_string()
+    let status = if params.status >= 3 {
+        "is not null".to_string()
     } else {
-        format!("r.send_time >= '{}' and r.send_time <= '{}'", st.0, st.1)
+        format!("= {}", params.status)
     };
-    let query = match params.send_status {
-        1 => __query_statement(
-            "r.send_time is null",
-            "r.processing_time is null",
-            " = 2",
-            params,
-        ),
-        0 => __query_statement(&st, &pt, status, params),
-        2 => __query_statement(&st, &pt, status, params),
-        _ => Err(Response::invalid_value("send_status值非法")),
-    }?;
-    // println!("{query}");
+    let st = format!("r.send_time >= '{}' and r.send_time <= '{}'", st.0, st.1);
+    let query = __query_statement(&st, &pt, &status, params)?;
     let reports: Vec<Report> = conn.query(query)?;
     let mut data = Vec::new();
     for row in reports {

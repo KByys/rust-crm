@@ -3,7 +3,6 @@ use crate::{
     Response,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
-use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub fn deserialize_f32_max_1<'de, D>(de: D) -> Result<f32, D::Error>

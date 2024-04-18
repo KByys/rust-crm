@@ -12,6 +12,8 @@ use crate::{
     bearer,
     database::get_conn,
     libs::{gen_id, time::TIME, TimeFormat},
+    log,
+    pages::account::get_user,
     parse_jwt_macro, Response, ResponseResult,
 };
 
@@ -43,7 +45,13 @@ async fn insert_colleague(
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&id, &mut conn).await?;
     let mut params: Colleague = serde_json::from_value(value)?;
+    log!(
+        "{user} 发起添加客户联系人请求，客户{}, 客户联系人{}",
+        params.id,
+        params.name
+    );
     check_user_customer(&id, &customer, &mut conn)?;
     let time = TIME::now()?;
     params.id = gen_id(&time, &params.name);
@@ -56,6 +64,12 @@ async fn insert_colleague(
         params.name,
         time.format(TimeFormat::YYYYMMDD_HHMMSS)
     ))?;
+
+    log!(
+        "{user} 成功添加客户联系人，客户{}, 客户联系人{}",
+        params.id,
+        params.name
+    );
     Ok(Response::ok(json!(params.id)))
 }
 

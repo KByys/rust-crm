@@ -348,12 +348,10 @@ fn __update(
         "SELECT cover FROM product WHERE id = '{}' LIMIT 1",
         data.id
     ))?;
-    println!("cover is --{:?}", cover);
     let cover = op::some!(cover; ret Err(Response::not_exist("code: 180909")));
     let time = TIME::now()?;
 
     let link = if let Some(f) = part {
-        println!("{}", f.filename());
         let link = gen_file_link(&time, f.filename());
         link
     } else {

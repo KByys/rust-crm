@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer, commit_or_rollback,
-    database::{c_or_r, get_conn, Database},
+    database::get_conn,
     debug_info,
     libs::time::{TimeFormat, TIME},
     parse_jwt_macro,

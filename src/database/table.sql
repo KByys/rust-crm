@@ -226,7 +226,6 @@ CREATE TABLE IF NOT EXISTS product(
     cover VARCHAR(150) NULL,
     model VARCHAR(20) NOT NULL,
     unit VARCHAR(30) NOT NULL,
-    purchase_unit FLOAT NOT NULL,
     product_type VARCHAR(30) NOT NULL,
     price FLOAT NOT NULL,
     create_time VARCHAR(25) NOT NULL,

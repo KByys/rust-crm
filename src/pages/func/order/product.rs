@@ -1,5 +1,5 @@
 use crate::{
-    libs::dser::{deserialize_storehouse, serialize_f32_to_string},
+    libs::dser::{deserialize_storehouse, serialize_f32_to_string, deser_f32},
     Response,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
@@ -24,6 +24,9 @@ pub struct Product {
     #[serde(deserialize_with = "deserialize_f32_max_1")]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub discount: f32,
+    #[serde(deserialize_with = "deser_f32")]
+    #[serde(serialize_with = "serialize_f32_to_string")]
+    pub price: f32,
     pub amount: usize
 }
 

@@ -1,21 +1,33 @@
-use std::{collections::VecDeque, fs::read_dir, path::PathBuf};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::thread::sleep;
+use std::time::Duration;
+use tokio::sync::RwLock;
+use tokio::task;
+use dashmap::DashMap;
+lazy_static::lazy_static! {
+    static ref USER: Arc<DashMap<i32, RwLock<String>>> =  {
+        Arc::new(DashMap::new())
+    };
+}
 
-fn main() -> std::io::Result<()> {
-    let mut queue = VecDeque::new();
-    queue.push_back(PathBuf::from("src"));
-    let mut count = 0;
-    while let Some(path) = queue.pop_front() {
-        for dir in read_dir(path)? {
-            let path = dir.unwrap().path();
-            if path.is_dir() {
-                queue.push_back(path)
-            } else {
-                let data = std::fs::read_to_string(path)?;
-                let d: Vec<_> = data.lines().collect();
-                count += d.len();
-            }
-        }
+#[tokio::main]
+async fn main() {
+    let mut tasks = Vec::new();
+    for i in 0..100 {
+        tasks.push(task::spawn(run(i % 20)));
     }
-    println!("{}", count);
-    Ok(())
+    for task in tasks {
+        task.await.unwrap();
+    }
+    sleep(Duration::from_secs(6))
+}
+
+async fn run(i: i32) {
+    if let Some(v) = USER.get(&i) {
+        println!("读取{i}成功，内容是：{}", v.read().await)
+    } else {
+        USER.insert(i, RwLock::new(format!("{i} ------")));
+        println!("写入{i}")
+    }
 }

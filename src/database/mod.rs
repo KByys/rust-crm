@@ -89,7 +89,6 @@ macro_rules! mysql_stmt {
                 }
             });
             let stmt = format!("insert into {} ({values1}) values ({values2})", $table);
-            println!("{stmt}");
             stmt
         }
     };
@@ -113,6 +112,19 @@ macro_rules! commit_or_rollback {
             }
         }
     }};
+    (async $fn:expr, $conn:expr, $($args:expr), +) => {{
+        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        match $fn($conn, $($args ,)+).await {
+            Ok(ok) => {
+                mysql::prelude::Queryable::query_drop($conn, "commit")?;
+                Ok(ok)
+            }
+            Err(e) => {
+                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                Err(e)
+            }
+        }
+    }};
     ($fn:expr, $conn:expr, $params:expr) => {{
         mysql::prelude::Queryable::query_drop($conn, "begin")?;
         match $fn($conn, $params) {
@@ -126,22 +138,19 @@ macro_rules! commit_or_rollback {
             }
         }
     }};
-}
-
-pub fn _c_or_r_more<F, T, P>(f: F, conn: &mut PooledConn, param: T, more: P) -> Result<(), Response>
-where
-    F: Fn(&mut PooledConn, T, P) -> Result<(), Response>,
-{
-    match f(conn, param, more) {
-        Ok(_) => {
-            conn.query_drop("COMMIT")?;
-            Ok(())
+    ($fn:expr, $conn:expr, $($args:expr), +) => {{
+        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        match $fn($conn, $($args ,)+) {
+            Ok(ok) => {
+                mysql::prelude::Queryable::query_drop($conn, "commit")?;
+                Ok(ok)
+            }
+            Err(e) => {
+                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                Err(e)
+            }
         }
-        Err(e) => {
-            conn.query_drop("ROLLBACK")?;
-            Err(e)
-        }
-    }
+    }};
 }
 
 /// 连接数据库
@@ -155,5 +164,8 @@ use crate::{Response, MYSQL_URI};
 pub fn create_table() -> Result<()> {
     let mut conn = get_conn()?;
     let sql = include_str!("./table.sql");
-    conn.query_drop(sql)
+    for s in sql.split(';').filter(|s|!s.trim().is_empty()) {
+        conn.query_drop(s)?
+    }
+    Ok(())
 }

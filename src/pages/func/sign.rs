@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::create_dir};
+use std::collections::HashMap;
 
 use axum::{
     extract::{Multipart, Path},
@@ -172,7 +172,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&uid, &mut conn)?;
+    let user = get_user(&uid, &mut conn).await?;
     let param: QueryParams = serde_json::from_value(value)?;
     let end = ternary!(param.end.is_empty() => "9999-99-99 99:99:99".into(), format!("{} 99:99:99", param.end));
     match param.scope {
@@ -186,7 +186,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 None,
                 Some(["all"].as_slice())
             ) {
-                let other = get_user(&param.data, &mut conn)?;
+                let other = get_user(&param.data, &mut conn).await?;
                 if all || other.department.eq(&user.department) {
                     (other.id, other.department)
                 } else {

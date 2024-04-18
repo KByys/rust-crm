@@ -72,7 +72,7 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     } else {
         return Err(Response::not_exist("部门不存在"));
     }
-    let adm = get_user(&id, &mut conn)?;
+    let adm = get_user(&id, &mut conn).await?;
     regis.id = gen_id(&TIME::now()?, &regis.name);
     if ver_user_perm(&adm, &regis).await {
         catch!(__insert_user!(conn, params! {

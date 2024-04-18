@@ -2,7 +2,11 @@ use crate::{
     bearer,
     database::get_conn,
     libs::time::{TimeFormat, TIME},
-    parse_jwt_macro, Response, ResponseResult, ID, SEA_MAX_DAY, SEA_MIN_DAY,
+    log,
+    pages::account::get_user,
+    parse_jwt_macro,
+    perm::action::CustomerGroup,
+    verify_perms, Response, ResponseResult, ID, SEA_MAX_DAY, SEA_MIN_DAY,
 };
 use axum::{
     http::HeaderMap,
@@ -26,23 +30,65 @@ pub fn sea_router() -> Router {
 async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn).await?;
     let data: ID = serde_json::from_value(value)?;
-    let salesman: Option<String> = conn.query_first(format!(
-        "SELECT salesman FROM customer WHERE id = '{}'",
-        data.id
-    ))?;
-    if salesman.is_some_and(|s| s == id) {
+    let sql_data: Option<(String, String)> = conn.exec_first(
+        "select c.name, ex.salesman from customer c join extra_customer_data ex on ex.id=c.id where c.id  = ? limit 1", (&data.id, ),
+    )?;
+
+    let (customer_name, salesman) = match sql_data {
+        Some(data) => data,
+        _ => {
+            log(format_args!(
+                "{}({})释放客户{}到公海失败，没有该客户信息",
+                user.id, user.name, data.id
+            ));
+            return Err(Response::not_exist("该客户不存在"));
+        }
+    };
+    if salesman == user.id {
+        let value = if data.public {
+            if verify_perms!(
+                &user.role,
+                CustomerGroup::NAME,
+                CustomerGroup::RELEASE_CUSTOMER
+            ) {
+                mysql::Value::NULL
+            } else {
+                log(format_args!(
+                    "{}({})释放客户{}({})到公司公海失败，因为权限不足",
+                    user.id, user.name, data.id, customer_name
+                ));
+                return Err(Response::permission_denied());
+            }
+        } else {
+            mysql::Value::Bytes(user.department.clone().into_bytes())
+        };
         let date = TIME::now()?;
-        let scope = op::ternary!(data.public => 2; 1);
-        println!("{:?}", date.format(TimeFormat::YYYYMMDD_HHMM));
-        conn.query_drop(format!(
-            "UPDATE customer SET push_to_sea_date = '{}', scope = {scope} WHERE id = '{}' AND scope = 0",
-            date.format(TimeFormat::YYYYMMDD_HHMM),
-            data.id
-        ))?;
+        conn.exec_drop(
+            "insert into customer_sea (id, put_in_date, sea) values (?, ?, ?)",
+            (&data.id, date.format(TimeFormat::YYYYMMDD), value),
+        )?;
+        log(format_args!(
+            "{}({})成功释放客户{}({})到{} 公海",
+            user.id,
+            user.name,
+            data.id,
+            customer_name,
+            op::ternary!(data.public => "公司", &user.department)
+        ));
         Ok(Response::empty())
     } else {
+
+        log(format_args!(
+            "{}({})释放客户{}({})到{} 公海失败，目前只能释放自己的客户",
+            user.id,
+            user.name,
+            data.id,
+            customer_name,
+            op::ternary!(data.public => "公司", &user.department)
+        ));
         Err(Response::permission_denied())
     }
 }

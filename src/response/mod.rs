@@ -10,7 +10,7 @@ use axum::{
 use serde::{ser::SerializeStruct, Serialize};
 use serde_json::{json, Value};
 
-use crate::{libs::parse_file_link, pages::func::DEFAULT_PRODUCT_COVER};
+use crate::{libs::parse_file_link, log, pages::func::DEFAULT_PRODUCT_COVER};
 /// 响应数据
 #[derive(Debug)]
 pub struct Response {
@@ -32,6 +32,9 @@ impl Serialize for Response {
         S: serde::Serializer,
     {
         let mut s = serializer.serialize_struct("Response", 2)?;
+        if self.status != 0 {
+            log!("检测到请求错误，错误信息：{}", self.data);
+        }
         s.serialize_field("status", &self.status)?;
         s.serialize_field("code", &self.code.as_u16())?;
         s.serialize_field("data", &self.data)?;
@@ -115,6 +118,7 @@ impl From<mysql::Error> for Response {
                 return Response::already_exist(format!("重复添加，错误信息：{err}"));
             }
         }
+
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             -1,
@@ -197,7 +201,6 @@ impl BodyFile {
 
         let mut path = parent.as_ref().to_path_buf();
         path.push(url);
-        println!("{}", path.display());
         if !path.is_file() {
             return Err((StatusCode::NOT_FOUND, "找不到该地址指向的文件".to_string()));
         }

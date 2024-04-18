@@ -1,12 +1,20 @@
 use axum::{http::HeaderMap, Json};
-use mysql::{prelude::Queryable, PooledConn};
+use mysql::PooledConn;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, database::get_conn, libs::headers::Bearer, perm::ROLES_GROUP_MAP, response::Response, token::{generate_jwt, parse_jwt, TokenVerification}, ResponseResult
+    bearer,
+    database::get_conn,
+    libs::headers::Bearer,
+    log,
+    pages::account::get_user,
+    perm::{roles::role_to_name, ROLES_GROUP_MAP},
+    response::Response,
+    token::{generate_jwt, parse_jwt, TokenVerification},
+    ResponseResult,
 };
 
-use super::User;
+use super::{get_user_with_phone_number};
 
 #[derive(serde::Deserialize)]
 struct LoginID {
@@ -24,90 +32,114 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
 }
 
 async fn verify_login_token(bearer: &Bearer, conn: &mut PooledConn) -> ResponseResult {
-
-        let token = match parse_jwt(bearer) {
-            Some(token) if !token.sub => {
-                return Err(Response::token_error("客户账号无法进行员工登录"))
-            }
-            None => return Err(Response::token_error("Invalid token")),
-            Some(token) => token,
-        };
-        let tbn: Option<i64> = conn.query_first(format!(
-            "SELECT tbn FROM token WHERE ty = 0 AND id = '{}'",
-            token.id
-        ))?;
-        if tbn.is_some_and(|tbn| tbn >= token.iat) {
-            return Err(Response::token_error("token已过期，无法刷新，请重新登录"));
+    let token = match parse_jwt(bearer) {
+        Some(token) if !token.sub => return Err(Response::token_error("客户账号无法进行员工登录")),
+        None => {
+            log(format_args!("非法token登录"));
+            return Err(Response::token_error("Invalid token"));
         }
+        Some(token) => token,
+    };
+    // let tbn: Option<i64> = conn.query_first(format!(
+    //     "SELECT tbn FROM token WHERE ty = 0 AND id = '{}'",
+    //     token.id
+    // ))?;
+    // if tbn.is_some_and(|tbn| tbn >= token.iat) {
+    //     log!("用户登录失败，原因: token已过期");
+    //     return Err(Response::token_error("token已过期，无法刷新，请重新登录"));
+    // }
 
-        match token.verify(conn)? {
-            TokenVerification::Ok => {
-                let user: User = op::some!(conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", token.id))?; ret Err(Response::not_exist("用户不存在")));
-                // println!("role is {}", user.role);
-                if user.role.eq("root") {
-                    Ok(Response::ok(json!({
-                        "token": bearer.token(),
-                        "perm": "all",
-                        "info": user
-                    })))
-                } else {
-                    let perms = ROLES_GROUP_MAP.lock().await;
-                    println!("{:#?}", perms);
-                    Ok(Response::ok(json!({
-                        "token": bearer.token(),
-                        "perm": perms.get(&user.role),
-                        "info": user
-                    })))
-                }
+    match token.verify(conn)? {
+        TokenVerification::Ok => {
+            let user = get_user(&token.id, conn).await?;
+            log!(
+                "{}-{}({})登录成功",
+                role_to_name(&user.role),
+                user.name,
+                user.id
+            );
+            if user.role.eq("root") {
+                Ok(Response::ok(json!({
+                    "token": bearer.token(),
+                    "perm": "all",
+                    "info": user
+                })))
+            } else {
+                let perms = ROLES_GROUP_MAP.lock().await;
+                Ok(Response::ok(json!({
+                    "token": bearer.token(),
+                    "perm": perms.get(&user.role),
+                    "info": user
+                })))
             }
-            TokenVerification::Expired => {
-                if token.is_refresh() {
-                    let data: Option<User> =
-                        conn.query_first(format!("SELECT * FROM user WHERE id = '{}'", token.id))?;
-                    let token = generate_jwt(true, &token.id);
+        }
+        TokenVerification::Expired => {
+            if token.is_refresh() {
+                let user = get_user(&token.id, conn).await?;
+                let token = generate_jwt(true, &token.id);
+                log!(
+                    "{}-{}({})登录成功, token已刷新",
+                    role_to_name(&user.role),
+                    user.name,
+                    user.id
+                );
+                if user.role.eq("root") {
                     Ok(Response::ok(json!({
                         "token": token,
-                        "info": data
+                        "info": user,
+                        "perm": "all"
                     })))
                 } else {
-                    Err(Response::token_error("Token已过期"))
+                    let perms = ROLES_GROUP_MAP.lock().await;
+                    Ok(Response::ok(json!({
+                        "token": token,
+                        "info": user,
+                        "perm": perms.get(&user.role)
+                    })))
                 }
+            } else {
+                log!("用户登录失败，原因: token已过期");
+                Err(Response::token_error("Token已过期"))
             }
-            TokenVerification::Error => Err(Response::token_error("Invalid token")),
         }
+        TokenVerification::Error => {
+            log!("用户登录失败，原因: token非法");
+            Err(Response::token_error("Invalid token"))
+        }
+    }
 }
 async fn verify_password(value: Value, conn: &mut PooledConn) -> ResponseResult {
-
-        let user: LoginID = serde_json::from_value(value)?;
-        let digest = md5::compute(&user.password);
-        let info: Option<User> = conn.query_first(format!(
-            "SELECT * FROM user WHERE smartphone = '{}'",
+    let params: LoginID = serde_json::from_value(value)?;
+    let digest = md5::compute(&params.password);
+    let user = get_user_with_phone_number(&params.smartphone, conn)?;
+    if user.password.as_slice() != digest.0.as_slice() {
+        log!(
+            "{}-{}(手机号：{})登录失败，密码错误",
+            user.role,
+            user.name,
             user.smartphone
-        ))?;
-        println!("{:?}", info);
-        if let Some(user) = info {
-            if user.password.as_slice() != digest.0.as_slice() {
-                Err(Response::wrong_password())
-            } else {
-                println!("{:?}", user);
-                let token = generate_jwt(true, &user.id);
-                if user.role.eq("root") {
-                    Ok(Response::ok(
-                        json!({"token": token, "info": user, "perms": "all"}),
-                    ))
-                } else {
-                    let perms = ROLES_GROUP_MAP.lock().await;
-                    Ok(Response::ok(
-                        json!({"token": token, "info": user, "perms": perms.get(&user.role)}),
-                    ))
-                }
-            }
+        );
+        Err(Response::wrong_password())
+    } else {
+        let token = generate_jwt(true, &user.id);
+
+        log!(
+            "{}-{}(手机号：{})登录成功",
+            user.role,
+            user.name,
+            user.smartphone
+        );
+        if user.role.eq("root") {
+            Ok(Response::ok(
+                json!({"token": token, "info": user, "perms": "all"}),
+            ))
         } else {
-            Err(Response::not_exist(format!(
-                "{} 用户不存在",
-                user.smartphone
-            )))
+            let perms = ROLES_GROUP_MAP.lock().await;
+            Ok(Response::ok(
+                json!({"token": token, "info": user, "perms": perms.get(&user.role)}),
+            ))
         }
+    }
 }
 
 // pub async fn customer_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {

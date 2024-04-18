@@ -6,6 +6,17 @@ pub struct RoleTable {
     table: Vec<(String, String)>,
 }
 
+pub fn role_to_name(role: &str) -> String {
+    unsafe {
+        ROLE_TABLES.get_name(role).map_or(String::new(), |s|s.to_owned())
+    }
+}
+pub fn name_to_role(name: &str) -> String {
+    unsafe {
+        ROLE_TABLES.get_id(name).map_or(String::new(), |s|s.to_owned())
+    }
+}
+
 impl RoleTable {
     pub const fn empty() -> RoleTable {
         RoleTable { table: Vec::new() }

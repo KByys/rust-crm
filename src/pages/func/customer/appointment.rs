@@ -6,7 +6,6 @@ use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-// use crate::database::{c_or_r};
 use crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss;
 use crate::libs::TimeFormat;
 use crate::perm::action::CustomerGroup;
@@ -58,6 +57,8 @@ struct InsertParams {
 // 修改和删除拜访需要拜访发起者
 // 完成拜访需要拜访者
 use crate::{commit_or_rollback, verify_perms};
+
+use super::CUSTOMER_CACHE;
 async fn add_appointments(
     header: HeaderMap,
     Json(value): Json<serde_json::Value>,
@@ -67,6 +68,7 @@ async fn add_appointments(
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: Vec<InsertParams> = serde_json::from_value(value)?;
     commit_or_rollback!(async __add_appoint, &mut conn, (&params, &uid))?;
+    CUSTOMER_CACHE.clear();
     Ok(Response::empty())
 }
 
@@ -100,6 +102,7 @@ async fn delete_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     commit_or_rollback!(__delete_appointment, &mut conn, (&id, &uid))?;
+    CUSTOMER_CACHE.clear();
     Ok(Response::empty())
 }
 
@@ -129,6 +132,7 @@ async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> Respon
         "UPDATE appointment SET finish_time = '{}' WHERE id = '{}' LIMIT 1",
         finish_time, id
     ))?;
+    CUSTOMER_CACHE.clear();
     Ok(Response::ok(json!(finish_time)))
 }
 #[derive(Deserialize)]
@@ -161,6 +165,7 @@ async fn update_appointment(
         where id='{}' and applicant='{}' limit 1",
         data.visitor, data.appointment, data.theme, data.content, data.id, uid
     ))?;
+    CUSTOMER_CACHE.clear();
     Ok(Response::empty())
 }
 

@@ -18,6 +18,17 @@ use mysql_common::prelude::FromRow;
 pub use response::Response;
 use serde_json::json;
 pub type ResponseResult = Result<Response, Response>;
+
+#[macro_export]
+macro_rules! get_cache {
+    ($map:expr, $arg1:expr, $arg2:expr) => {
+        match $map.get($arg1) {
+            Some(rw) => rw.get($arg2).map(|c|c.clone()),
+            _ => None   
+        }
+    };
+}
+
 #[inline]
 pub fn debug_info(info: String) {
     let time = TIME::now().unwrap_or_default().naos();
@@ -26,6 +37,13 @@ pub fn debug_info(info: String) {
         chrono::Local.timestamp_nanos(time as i64).to_rfc3339(),
         info
     )
+}
+
+#[macro_export]
+macro_rules! log {
+    ($($args:tt)+) => {
+        $crate::log(format_args!($($args)+))
+    };
 }
 
 pub fn log(args: Arguments) {

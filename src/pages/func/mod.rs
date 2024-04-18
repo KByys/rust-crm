@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use axum::Router;
 use mysql::prelude::Queryable;
 
-use crate::{pages::STATIC_CUSTOM_FIELDS, Response};
+use crate::{log, pages::STATIC_CUSTOM_FIELDS, Response};
 
 use self::customer::index::CustomCustomerData;
 
@@ -72,7 +72,10 @@ pub fn __update_custom_fields(
             "texts" => 0,
             "times" => 1,
             "boxes" => 2,
-            _ => return Err(Response::invalid_value("自定义字段错误")),
+            _ => {
+                log!("更新{}信息失败，自定义字段错误", op::ternary!(field == 0 => "客户", "产品"));
+                return Err(Response::invalid_value("自定义字段错误"))
+            }
         };
         for f in v {
             let state = format!(
@@ -80,7 +83,7 @@ pub fn __update_custom_fields(
                     WHERE fields={field} AND ty={ty} AND display='{}' AND id='{id}' LIMIT 1",
                 f.value, f.display
             );
-            println!("{}", state);
+            // println!("{}", state);
             conn.query_drop(state)?;
         }
     }
@@ -94,20 +97,20 @@ pub fn __insert_custom_fields(
     id: &str,
 ) -> Result<(), crate::Response> {
     let (texts, times, boxes) = unsafe {
-        println!("{:#?}", STATIC_CUSTOM_FIELDS);
         crate::pages::STATIC_CUSTOM_FIELDS.get_fields(ty as _)
     };
 
     let map: HashMap<&str, Vec<&str>> = [("texts", texts), ("times", times), ("boxes", boxes)]
         .into_iter()
         .collect();
-    println!("{:#?}", map);
     for (k, v) in &map {
         if let Some(d) = fields.get(*k) {
             if !verify_custom_fields(v, d) {
+                log!("录入{}信息失败，原因存在自定义字段不匹配情况", op::ternary!(ty == 0 => "客户", "产品"));
                 return Err(crate::Response::dissatisfy("自定义字段存在不匹配情况"));
             }
         } else {
+            log!("录入{}信息失败，原因存在自定义字段不匹配情况", op::ternary!(ty == 0 => "客户", "产品"));
             return Err(crate::Response::dissatisfy("自定义字段存在不匹配情况"));
         }
     }

@@ -1,4 +1,7 @@
-use crate::libs::dser::{deser_f32, deser_yyyy_mm_dd, serialize_f32_to_string};
+use crate::{
+    libs::dser::{deser_f32, deser_yyyy_mm_dd, serialize_f32_to_string},
+    log,
+};
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
@@ -10,28 +13,43 @@ pub struct Repayment {
 }
 impl Repayment {
     pub fn smart_query(&mut self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
-        if self.model != 0 {
-            self.instalment = Instalment::query(conn, id)?;
-        }
+        self.instalment = Instalment::query(conn, id)?;
         Ok(())
     }
-
+    pub fn is_invalid(&self) -> bool {
+        self.instalment.is_empty() || {
+            let flag = self.model == 0 && self.instalment.len() != 1;
+            if flag {
+                log!("全款有且只能有一期付款")
+            }
+            flag
+        }
+    }
+    pub fn date_is_valid(&self) -> bool {
+        if self.instalment.len() > 1 {
+            let mut end = 1;
+            let mut start = 0;
+            while end < self.instalment.len() {
+                if self.instalment[start].date >= self.instalment[end].date {
+                    log!("后一个回款日期必须大于之前的");
+                    return false;
+                }
+                start += 1;
+                end += 1;
+            }
+        }
+        true
+    }
     pub fn smart_insert(&mut self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
-        if self.model != 0 {
-            Instalment::insert(conn, id, &self.instalment)?;
-        }
+        Instalment::insert(conn, id, &self.instalment)?;
         Ok(())
     }
-    pub fn sum(&self) -> Option<f32> {
-        if self.model != 0 {
-            Some(self.instalment.iter().map(|v| v.original_amount).sum())
-        } else {
-            None
-        }
+    pub fn sum(&self) -> f32 {
+        self.instalment.iter().map(|v| v.original_amount).sum()
     }
 }
 
-#[derive(Deserialize, FromRow, Serialize)]
+#[derive(Deserialize, FromRow, Serialize, PartialEq)]
 pub struct Instalment {
     #[serde(deserialize_with = "deser_f32")]
     #[serde(serialize_with = "serialize_f32_to_string")]

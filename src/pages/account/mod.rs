@@ -22,8 +22,10 @@ use crate::{
     perm::verify_permissions,
     Response, ResponseResult,
 };
+
+use super::user::cache::USER_CACHE;
 /// 员工数据
-#[derive(Debug, serde::Serialize, FromRow, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, FromRow, serde::Deserialize, Clone)]
 pub struct User {
     #[serde(default)]
     pub id: String,
@@ -42,7 +44,11 @@ pub struct User {
     #[serde(serialize_with = "serialize_i32_to_bool")]
     pub sex: i32,
 }
-
+impl std::fmt::Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}-{}", self.department, self.name))
+    }
+}
 pub fn account_router() -> Router {
     Router::new()
         .route("/user/login", post(login::user_login))
@@ -111,13 +117,20 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     ))?;
     Ok(Response::empty())
 }
-pub fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
-    println!(
-        "SELECT u.* FROM user u WHERE u.id = '{id}' 
-        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"
-    );
-    let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
-        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
+
+pub async fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
+    if let Some(user) = USER_CACHE.read().await.get(id) {
+        Ok(user.clone())
+    } else {
+        let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
+                AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
+        USER_CACHE.write().await.insert(id.to_owned(), u.clone());
+        Ok(u)
+    }
+}
+pub fn get_user_with_phone_number(number: &str, conn: &mut PooledConn) -> Result<User, Response> {
+    let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.smartphone = '{number}' 
+        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("手机号错误，用户不存在")));
     Ok(u)
 }
 
@@ -125,7 +138,7 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let u = get_user(&id, &mut conn)?;
+    let u = get_user(&id, &mut conn).await?;
     let count: usize = match depart.as_str() {
         "all" => conn
             .query::<i32, &str>(
@@ -158,7 +171,7 @@ async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> Respo
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let u = get_user(&id, &mut conn)?;
+    let u = get_user(&id, &mut conn).await?;
     let data: Vec<Value> = match depart.as_str() {
         "all" => {
             if !verify_permissions(&u.role, "other", "company_staff_data", None).await {

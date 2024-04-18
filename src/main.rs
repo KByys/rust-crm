@@ -3,7 +3,7 @@ use std::fs::create_dir;
 use axum::{extract::DefaultBodyLimit, http::Method, Router};
 use crm_rust::{
     database::get_conn,
-    pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS},
+    pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS, USER_CACHE},
     perm::roles::ROLE_TABLES,
     read_data, Config, MYSQL_URI,
 };
@@ -40,6 +40,7 @@ async fn main() {
 /// 初始化静态数据
 unsafe fn init_static() {
     let mut conn = get_conn().expect("初始化失败");
+
     ROLE_TABLES.init(&mut conn);
     STATIC_CUSTOM_FIELDS
         .init(&mut conn, "custom_fields")
@@ -48,7 +49,6 @@ unsafe fn init_static() {
         .init(&mut conn, "custom_field_option")
         .expect("err code: 2");
     DROP_DOWN_BOX.init(&mut conn).expect("err code: 3");
-    // crm_rust::pages::func::cust::STATIC_CUSTOMER_LEVEL.init();
 }
 fn _create_all_dir() -> std::io::Result<()> {
     _create_dir("config")?;

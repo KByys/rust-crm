@@ -1,5 +1,6 @@
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value;
 use std::fmt::Display;
 
 use crate::{pages::DROP_DOWN_BOX, perm::roles::ROLE_TABLES};
@@ -148,6 +149,25 @@ where
         }
     }
 }
+
+pub fn deserialize_inventory<'de, D>(de: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    
+    let num: Value = Deserialize::deserialize(de)?;
+    match num {
+        Value::Number(n) => {
+            Ok(n.as_i64().map_or(0, |i| i as i32))
+        }
+        Value::String(s) => Ok(s.parse().unwrap_or_default()),
+        _ => Err(serde::de::Error::custom("库存数量格式错误"))
+    }
+
+
+}
+
+
 pub fn deserialize_role<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
@@ -189,6 +209,29 @@ fn regex_time<'de, D: Deserializer<'de>>(re: &str, de: D, err: &str) -> Result<S
             "Invalid Time Format. 时间格式应当为'{err}'"
         )))
     }
+}
+
+static YYYY_MM_DD: &str = r"(\d{4})-(\d{2})-(\d{2})";
+
+pub fn deserialize_time_scope<'de, D>(de: D) -> Result<(String, String), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    
+    let time: String = Deserialize::deserialize(de)?;
+    let split: Vec<_> = time.splitn(2, '~').collect();
+    let err = 
+    serde::de::Error::custom("时间范围格式错误，必须为`YYYY-MM-DD~YYYY-MM-DD`");
+    if split.len() != 2 {
+        return Err(err);
+    }
+    let regex = Regex::new(YYYY_MM_DD).unwrap();
+    if split.iter().all(|s|regex.is_match(s)) {
+        Ok((split[0].to_owned(), split[1].to_owned()))
+    } else {
+        Err(err)
+    }
+
 }
 
 pub fn deser_yyyy_mm_dd<'de, D>(de: D) -> Result<String, D::Error>

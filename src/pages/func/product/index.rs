@@ -1,22 +1,14 @@
 use crate::{
-    bearer, commit_or_rollback,
-    database::{c_or_r, get_conn},
-    libs::{
-        dser::{deser_f32, serialize_f32_to_string},
-        gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
-    },
-    pages::{
+    bearer, commit_or_rollback, database::{c_or_r, get_conn}, get_cache, libs::{
+        cache::PRODUCT_CACHE, dser::{deser_f32, serialize_f32_to_string}, gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME
+    }, log, pages::{
         account::get_user,
         func::{
             __insert_custom_fields, __update_custom_fields, customer::index::CustomCustomerData,
             get_custom_fields,
         },
         DROP_DOWN_BOX,
-    },
-    parse_jwt_macro,
-    perm::action::StorehouseGroup,
-    response::BodyFile,
-    verify_perms, Response, ResponseResult,
+    }, parse_jwt_macro, perm::action::StorehouseGroup, response::BodyFile, verify_perms, Response, ResponseResult
 };
 use axum::{
     extract::{Multipart, Path},
@@ -42,12 +34,13 @@ pub fn product_router() -> Router {
         .route("/product/query/:id", get(query_by))
         .route("/product/cover/:cover", get(get_cover))
 }
-use crate::libs::dser::deserialize_storehouse;
+use crate::libs::dser::{deserialize_storehouse, deserialize_inventory};
 #[derive(Debug, Serialize, Deserialize, mysql_common::prelude::FromRow)]
 struct Inventory {
     #[serde(deserialize_with = "deserialize_storehouse")]
     storehouse: String,
-    amount: usize,
+    #[serde(deserialize_with = "deserialize_inventory")]
+    amount: i32,
 }
 #[derive(Default)]
 pub struct WrapperInventory {
@@ -124,20 +117,24 @@ async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&id, &mut conn)?;
+    let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
         StorehouseGroup::ADD_PRODUCT
     ) {
+        log!("系统拒绝 {user} 添加产品的请求，原因是没有添加产品的权限");
         return Err(Response::permission_denied());
     }
-
+    
     let part = parse_multipart(part).await?;
     let data: ProductParams = serde_json::from_str(&part.json)?;
+    let name = data.name.clone();
+    log!("{user} 请求添加产品 {} -- 带封面", name);
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
-    commit_or_rollback!(async __insert, &mut conn, (data, Some(file), &user.role))?;
-
+    commit_or_rollback!(async __insert, &mut conn, data, Some(file), &user.role)?;
+    PRODUCT_CACHE.clear();
+    log!("{user} 成功添加产品 {} -- 带封面", name);
     Ok(Response::empty())
 }
 
@@ -145,24 +142,28 @@ async fn add_product_json(header: HeaderMap, Json(value): Json<Value>) -> Respon
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&id, &mut conn)?;
+    let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
         StorehouseGroup::ADD_PRODUCT
     ) {
+        log!("系统拒绝 {user} 添加产品的请求，原因是没有添加产品的权限");
         return Err(Response::permission_denied());
     }
 
     let data: ProductParams = serde_json::from_value(value)?;
-    commit_or_rollback!(async __insert, &mut conn, (data, None, &user.role))?;
-
+    let name = data.name.clone();
+    log!("{user} 请求添加产品 {} -- 默认封面", name);
+    commit_or_rollback!(async __insert, &mut conn, data, None, &user.role)?;
+    log!("{user} 成功添加产品 {} -- 默认封面", name);
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 
 async fn __insert(
     conn: &mut PooledConn,
-    (mut data, part, role): (ProductParams, Option<&FilePart>, &str),
+    mut data: ProductParams, part: Option<&FilePart>, role: &str
 ) -> Result<(), Response> {
     let time = TIME::now()?;
     data.id = gen_id(&time, &data.name);
@@ -283,9 +284,13 @@ async fn update_product_store(
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&uid, &mut conn)?;
+    let user = get_user(&uid, &mut conn).await?;
+    log!("{user} 请求更新产品 {} 的库存", id);
     let inventory: Vec<Inventory> = serde_json::from_value(value)?;
     update_store(&mut conn, &id, &inventory, &user.role).await?;
+
+    log!("{user} 成功更新产品 {} 的库存", id);
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 
@@ -293,18 +298,23 @@ async fn update_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&id, &mut conn)?;
+    let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
         StorehouseGroup::UPDATE_PRODUCT
     ) {
+        log!("{user} 因权限不足而被系统拒绝更新产品信息 -- 带封面");
         return Err(Response::permission_denied());
     }
     let part = parse_multipart(part).await?;
     let data: ProductParams = serde_json::from_str(&part.json)?;
+    log!("{user} 请求更新产品 {} 信息 -- 带封面", data.id);
     let file = op::some!(part.files.first(); ret Err(Response::dissatisfy("缺少封面")));
-    c_or_r(__update, &mut conn, (data, Some(file)), false)?;
+    commit_or_rollback!(__update, &mut conn, data, Some(file))?;
+
+    log!("{user} 成功更新产品信息 -- 带封面");
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 
@@ -312,23 +322,27 @@ async fn update_product_json(header: HeaderMap, Json(value): Json<Value>) -> Res
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&id, &mut conn)?;
+    let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
         StorehouseGroup::UPDATE_PRODUCT,
         None
     ) {
+        log!("{user} 因权限不足而被系统拒绝更新产品信息 -- 无封面");
         return Err(Response::permission_denied());
     }
     let data: ProductParams = serde_json::from_value(value)?;
-    commit_or_rollback!(__update, &mut conn, (data, None))?;
+        log!("{user} 请求更新产品 {} 信息 -- 无封面", data.id);
+    commit_or_rollback!(__update, &mut conn, data, None)?;
+    log!("{user} 成功更新产品信息 -- 无封面");
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 
 fn __update(
     conn: &mut PooledConn,
-    (data, part): (ProductParams, Option<&FilePart>),
+    data : ProductParams, part: Option<&FilePart>
 ) -> Result<(), Response> {
     let cover: Option<String> = conn.query_first(format!(
         "SELECT cover FROM product WHERE id = '{}' LIMIT 1",
@@ -345,8 +359,6 @@ fn __update(
     } else {
         cover.clone()
     };
-
-    println!("{:#?}", data);
     conn.exec_drop(
         format!(
             "UPDATE product 
@@ -392,6 +404,12 @@ struct QueryParams {
 
 async fn query_product(Json(value): Json<Value>) -> ResponseResult {
     let mut conn = get_conn()?;
+    let param_str = value.to_string();
+    if let Some(data) = PRODUCT_CACHE.get(&param_str) {
+        log!("查询产品信息，缓存命中");
+        return Ok(Response::ok(json!(data.clone())));
+    }
+        log!("查询产品信息，缓存未命中, 查询中....");
     let data: QueryParams = serde_json::from_value(value)?;
     let ty = op::ternary!(data.ty.is_empty() => "IS NOT NULL".into(); format!("= '{}'", data.ty));
     let stock = match data.stock {
@@ -425,7 +443,6 @@ async fn query_product(Json(value): Json<Value>) -> ResponseResult {
         )
     };
 
-    println!("{query}");
     let tmp: Vec<ProductParams> = conn.query(query)?;
     let mut products = Vec::new();
     for mut product in tmp {
@@ -436,13 +453,20 @@ async fn query_product(Json(value): Json<Value>) -> ResponseResult {
                 and storehouse {store} order by storehouse",
             product.id
         ))?;
-        // product.custom_fields = get_custom_fields(&mut conn, &product.id, 1)?;
         products.push(product);
     }
-    Ok(Response::ok(json!(products)))
+
+    log!("共查询到 {} 条产品信息", products.len());
+    let value = json!(products);
+    PRODUCT_CACHE.insert(param_str, value.clone());
+    Ok(Response::ok(value))
 }
 
 async fn query_by(Path(id): Path<String>) -> ResponseResult {
+    if let Some(data) = PRODUCT_CACHE.get(&id).map(|v|v.clone()) {
+        log!("产品--缓存命中");
+        return Ok(Response::ok(data));
+    }
     let mut conn = get_conn()?;
     let mut data: Option<ProductParams> = conn.query_first(format!(
         "SELECT *, 1 as custom_fields, 1 as inventory FROM product WHERE id = '{id}' ORDER BY create_time"
@@ -456,7 +480,9 @@ async fn query_by(Path(id): Path<String>) -> ResponseResult {
         ))?;
         d.custom_fields = get_custom_fields(&mut conn, &d.id, 1)?;
     }
-    Ok(Response::ok(json!(data)))
+    let value = json!(data);
+    PRODUCT_CACHE.insert(id, value.clone());
+    Ok(Response::ok(value))
 }
 async fn delete_storehouse(
     header: HeaderMap,
@@ -466,7 +492,7 @@ async fn delete_storehouse(
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let user = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&user, &mut conn)?;
+    let user = get_user(&user, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
@@ -478,13 +504,15 @@ async fn delete_storehouse(
         "delete from product_store where product = ? and storehouse = ?",
         value.iter().map(|v| (&id, v)),
     )?;
+
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
     let user = parse_jwt_macro!(&bearer, &mut conn => true);
-    let user = get_user(&user, &mut conn)?;
+    let user = get_user(&user, &mut conn).await?;
     if !verify_perms!(
         &user.role,
         StorehouseGroup::NAME,
@@ -493,6 +521,7 @@ async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseRe
         return Err(Response::permission_denied());
     }
     commit_or_rollback!(__delete_product, &mut conn, &id)?;
+    PRODUCT_CACHE.clear();
     Ok(Response::empty())
 }
 fn __delete_product(conn: &mut PooledConn, id: &str) -> Result<(), Response> {

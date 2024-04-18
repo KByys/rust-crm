@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 
-use axum::{extract::Path, http::HeaderMap, routing::post, Json, Router};
+use axum::{
+    extract::{Multipart, Path},
+    http::HeaderMap,
+    routing::post,
+    Json, Router,
+};
 use chrono::{Days, TimeZone};
+use jwt::Store;
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, catch,
-    database::{c_or_r, get_conn},
-    libs::{gen_id, TimeFormat, TIME},
-    pages::{
-        account::get_user,
-        func::{__update_custom_fields, get_custom_fields},
-    },
-    parse_jwt_macro,
-    perm::action::CustomerGroup,
-    verify_perms, Field, Response, ResponseResult,
+    bearer, catch, commit_or_rollback, database::get_conn, get_cache, libs::{gen_id, parse_multipart, TimeFormat, TIME}, log, pages::{
+        account::{get_user, User},
+        func::{__update_custom_fields, customer::CUSTOMER_CACHE, get_custom_fields},
+    }, parse_jwt_macro, perm::{action::CustomerGroup, roles::role_to_name}, verify_perms, Field, Response, ResponseResult
 };
 
 pub fn customer_router() -> Router {
@@ -26,13 +26,13 @@ pub fn customer_router() -> Router {
         .route("/customer/full/data/:id", post(query_full_data))
         .route("/customer/update", post(update_customer))
         .route("/customer/add", post(insert_customer))
+        .route("/customer/upload/excel", post(upload_excel))
 }
 
 use crate::libs::dser::{
     deser_empty_to_none, deserialize_bool_to_i32, deserialize_mm_dd, serialize_i32_to_bool,
     serialize_null_to_default,
 };
-
 
 #[derive(Serialize, Deserialize, Debug, FromRow)]
 pub struct Customer {
@@ -172,16 +172,17 @@ fn __insert_customer(conn: &mut PooledConn, table: &InsertParams) -> Result<(), 
                     "level" => &table.level
                 }
             ) => dup)?;
-    conn.exec_drop("INSERT INTO extra_customer_data (id, salesman, last_transaction_time,
-        push_to_sea_date, pop_from_sea_date, added_date) VALUES (:id, :salesman, :last_transaction_time,
-        :push_to_sea_date, :pop_from_sea_date, :added_date) ", params! {
-        "id" => &id,
-        "salesman" => &table.salesman,
-        "last_transaction_time" => mysql::Value::NULL,
-        "push_to_sea_date" => mysql::Value::NULL,
-        "pop_from_sea_date" => mysql::Value::NULL,
-        "added_date" => time.format(TimeFormat::YYYYMMDD)
-    })?;
+    conn.exec_drop(
+        "INSERT INTO extra_customer_data (id, salesman, last_transaction_time,
+        added_date) VALUES (:id, :salesman, :last_transaction_time,
+         :added_date) ",
+        params! {
+            "id" => &id,
+            "salesman" => &table.salesman,
+            "last_transaction_time" => mysql::Value::NULL,
+            "added_date" => time.format(TimeFormat::YYYYMMDD)
+        },
+    )?;
 
     crate::pages::func::__insert_custom_fields(conn, &table.custom_fields, 0, &id)?;
     Ok(())
@@ -221,21 +222,37 @@ async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: InsertParams = serde_json::from_value(value)?;
-    let user = get_user(&id, &mut conn)?;
-    println!(
-        "添加客户，{}-{} : {:#?}",
-        user.name, user.smartphone, params
+    let user = get_user(&id, &mut conn).await?;
+    let role = role_to_name(&user.role);
+    log!(
+        "{}-{} 进行添加客户操作，公司：{}，客户名：{}",
+        role,
+        user.name,
+        params.company,
+        params.name
     );
-
     if !verify_perms!(
         &user.role,
         CustomerGroup::NAME,
         CustomerGroup::ENTER_CUSTOMER_DATA
     ) {
+        log!(
+            "{}-{} 进行添加客户操作失败, 原因是权限不足",
+            role,
+            user.name
+        );
         return Err(Response::permission_denied());
     }
 
-    c_or_r(__insert_customer, &mut conn, &params, false)?;
+    commit_or_rollback!(__insert_customer, &mut conn, &params)?;
+    CUSTOMER_CACHE.clear();
+    log!(
+        "{}-{} 成功添加客户({}-{})",
+        role,
+        user.name,
+        params.company,
+        params.name
+    );
     Ok(Response::empty())
 }
 #[derive(Debug, FromRow, Deserialize, Serialize)]
@@ -306,7 +323,7 @@ fn __query_full_data(
 ) -> Result<Option<FullCustomerData>, Response> {
     let time = TIME::now()?;
     let today = time.format(TimeFormat::YYYYMMDD);
-    // 会出现重复列，目前测试数据正确
+    // 会出现重复数据，目前测试数据正确
     let query = format!(
         "SELECT DISTINCT c.*, ex.salesman, ex.last_transaction_time, 
             MIN(app.appointment) as next_visit_time, COUNT(cou.id) as visited_count,
@@ -323,7 +340,6 @@ fn __query_full_data(
             WHERE c.id = '{id}'
             GROUP BY c.id, app.id, cou.id"
     );
-    println!("{}", query);
 
     let mut data: Option<FullCustomerData> = conn.query_first(query)?;
     if let Some(d) = &mut data {
@@ -335,9 +351,26 @@ fn __query_full_data(
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    parse_jwt_macro!(&bearer, &mut conn => true);
-    let data = __query_full_data(&mut conn, &id)?;
-    Ok(Response::ok(json!(data)))
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn).await?;
+    if let Some(value) = get_cache!(CUSTOMER_CACHE, "full",  &id) {
+        log!("{user} 成功查询到客户`{}`的信息 缓存", id);
+        Ok(Response::ok(value.clone()))
+    } else if let Some(data) = __query_full_data(&mut conn, &id)? {
+        log!(
+            "{user} 成功查询到客户`{}({})`的信息",
+            data.name,
+            id
+        );
+        CUSTOMER_CACHE
+            .entry("full".to_string())
+            .or_default()
+            .insert(id, json!(data));
+        Ok(Response::ok(json!(data)))
+    } else {
+        log!("没有找到该客户`{}`信息", id);
+        Ok(Response::ok(json!(None::<()>)))
+    }
 }
 
 #[derive(Deserialize)]
@@ -346,7 +379,6 @@ struct QueryParams {
     ty: Option<String>,
     ap: i32,
     appointment: u64,
-    // visited_days: i32,
     added_days: i32,
     #[allow(unused)]
     is_share: Value,
@@ -365,8 +397,12 @@ macro_rules! __convert {
         if $days < 0 {
             format!("IS NULL OR {} IS NOT NULL", $name)
         } else {
-            let t = op::some!($local.checked_sub_days(Days::new($days as u64));
-                ret Err(Response::invalid_value("天数错误")));
+            let t = if let Some(t) = $local.checked_sub_days(Days::new($days as u64)) {
+                t
+            }else {
+                log!("查询客户失败，原因天数错误");
+                return Err(Response::invalid_value("天数错误"))
+            };
             format!(">= '{}'",TIME::from(t).format(TimeFormat::YYYYMMDD))
         }
     };
@@ -407,7 +443,7 @@ macro_rules! __convert {
         } else if $sales.eq("my") {
             (format!("='{}'", $u.id), "IS NOT NULL".to_owned())
         } else {
-            let sl = get_user($sales, $conn)?;
+            let sl = get_user($sales, $conn).await?;
 
             let (depart, root) = verify_perms!(&$u.role, CustomerGroup::NAME, CustomerGroup::QUERY, None, Some(["all"].as_slice()));
             if root || (sl.department.eq(&$u.department) && depart) {
@@ -422,7 +458,7 @@ macro_rules! __convert {
 async fn __query_customer_list_data(
     conn: &mut PooledConn,
     params: &QueryParams,
-    id: &str,
+    u: &User,
 ) -> Result<Vec<ListData>, Response> {
     let status = __convert!(params.status);
     let ty = __convert!(params.ty);
@@ -435,14 +471,14 @@ async fn __query_customer_list_data(
     } else {
         format!("JOIN appointment a ON a.customer=c.id AND a.salesman=ex.salesman AND ({appoint})")
     };
-    let u = get_user(id, conn)?;
 
     let (salesman, department) =
         __convert!(params.salesman.as_str(), params.department, u, conn; auto);
     let today = time.format(TimeFormat::YYYYMMDD);
+
     let query = format!(
-        "SELECT c.id, c.smartphone, c.name, c.company, 
-        c.sex, c.ty, c.status, c.create_time, c.level, c.address, ex.salesman, COUNT(cou.id) as visited_count,
+        "SELECT c.*,
+        ex.salesman, COUNT(cou.id) as visited_count,
         u.name as salesman_name,
         MAX(cou.finish_time) AS last_visited_time,
         ex.last_transaction_time, MIN(app.appointment) as next_visit_time
@@ -452,11 +488,10 @@ async fn __query_customer_list_data(
         {ap}
         LEFT JOIN appointment app ON app.customer=c.id AND app.salesman=ex.salesman AND app.appointment>'{today}' AND app.finish_time IS NULL
         LEFT JOIN appointment cou ON cou.customer=c.id AND cou.salesman=ex.salesman AND cou.finish_time IS NOT NULL
-        WHERE (c.status {status}) AND (c.ty {ty})
+        WHERE (c.status {status}) AND (c.ty {ty}) AND NOT EXISTS (select 1 from customer_sea cs where cs.id = c.id)
         GROUP BY c.id
         "
     );
-    println!("{}", query);
     let list = conn.query(query)?;
     Ok(list)
 }
@@ -464,11 +499,26 @@ async fn __query_customer_list_data(
 async fn query_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = get_conn()?;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-
+    let uid = parse_jwt_macro!(&bearer, &mut conn => true);
+    let user = get_user(&uid, &mut conn).await?;
+    let param_str = value.to_string();
     let params: QueryParams = serde_json::from_value(value)?;
-    let list = __query_customer_list_data(&mut conn, &params, &id).await?;
-    Ok(Response::ok(json!(list)))
+    log!("{user} 正在查询客户信息");
+    let time1 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
+    let value = if let Some(cache) = get_cache!(CUSTOMER_CACHE, &uid, &param_str)
+    {
+        cache.clone()
+    } else {
+        let list = __query_customer_list_data(&mut conn, &params, &user).await?;
+        let value = json!(list);
+        CUSTOMER_CACHE.entry(uid).or_default().insert(param_str, value.clone());
+        value
+    };
+
+    let time2 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
+    println!("{:?}", time2 - time1);
+    log!("{user} 成功查询到客户信息");
+    Ok(Response::ok(json!(value)))
 }
 
 #[derive(Deserialize, Debug)]
@@ -519,17 +569,39 @@ async fn update_customer(header: HeaderMap, Json(value): Json<Value>) -> Respons
     let mut conn = get_conn()?;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: UpdateParams = serde_json::from_value(value)?;
-    let user = get_user(&id, &mut conn)?;
-    println!(
-        "更新客户，{}-{} : {:#?}",
-        user.name, user.smartphone, params
+    let user = get_user(&id, &mut conn).await?;
+    let role = role_to_name(&user.role);
+    log!(
+        "{}-{} 更新客户 `{}-{}`的信息",
+        role,
+        user.name,
+        params.company,
+        params.name
     );
     check_user_customer(&id, &params.id, &mut conn)?;
-    if !verify_perms!(&user.role, CustomerGroup::NAME, CustomerGroup::UPDATE_CUSTOMER_DATA) {
+    if !verify_perms!(
+        &user.role,
+        CustomerGroup::NAME,
+        CustomerGroup::UPDATE_CUSTOMER_DATA
+    ) {
+        log!(
+            "{}-{} 更新客户 `{}-{}`的信息失败，原因权限受阻",
+            role,
+            user.name,
+            params.company,
+            params.name
+        );
         return Err(Response::permission_denied());
     }
-
-    c_or_r(__update_customer, &mut conn, &params, false)?;
+    commit_or_rollback!(__update_customer, &mut conn, &params)?;
+    CUSTOMER_CACHE.clear();
+    log!(
+        "{}-{} 成功更新客户 `{}-{}`的信息",
+        role,
+        user.name,
+        params.company,
+        params.name
+    );
     Ok(Response::empty())
 }
 fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(), Response> {
@@ -566,4 +638,12 @@ fn __update_customer(conn: &mut PooledConn, params: &UpdateParams) -> Result<(),
     )?;
     __update_custom_fields(conn, &params.custom_fields, 0, &params.id)?;
     Ok(())
+}
+
+async fn upload_excel(_header: HeaderMap, part: Multipart) -> ResponseResult {
+    let data = parse_multipart(part).await?;
+    for f in &data.files {
+        println!("{:?}", f.filename())
+    }
+    Ok(Response::empty())
 }

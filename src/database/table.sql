@@ -135,6 +135,12 @@ CREATE TABLE IF NOT EXISTS customer (
     PRIMARY KEY (id)
 );
 
+create table if not exists customer_share (
+    customer varchar(150) not null,
+    share_salesman varchar(150) not null,
+    primary key (customer, share_salesman)
+);
+
 CREATE TABLE IF NOT EXISTS extra_customer_data (
     id VARCHAR(150) NOT NULL,
     salesman VARCHAR(150) NULL,
@@ -145,11 +151,17 @@ CREATE TABLE IF NOT EXISTS extra_customer_data (
     -- visited_count INT NOT NULL,
     -- 上次成交时间 暂时的值，后面需要用联合查询替换
     last_transaction_time VARCHAR(25) NULL,
-    push_to_sea_date VARCHAR(25) NULL,
-    pop_from_sea_date VARCHAR(25) NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (id) REFERENCES customer(id),
     FOREIGN KEY (salesman) REFERENCES user(id)
+);
+
+create table if not exists customer_sea (
+    id varchar(150) not null,
+    put_in_date varchar(25) not null,
+    -- null即公司公海，否则对应部门名称，
+    sea varchar(30) null,
+    primary key (id)
 );
 
 CREATE TABLE IF NOT EXISTS customer_colleague(
@@ -220,6 +232,7 @@ CREATE TABLE IF NOT EXISTS product(
     create_time VARCHAR(25) NOT NULL,
     barcode VARCHAR(50) NOT NULL,
     explanation TEXT,
+    purchase_price FLOAT NOT NULL,
     PRIMARY KEY (id)
 );
 
@@ -263,15 +276,6 @@ CREATE TABLE IF NOT EXISTS report_cc (
     PRIMARY KEY (cc, report)
 );
 
--- 报告回复
-CREATE TABLE IF NOT EXISTS report_reply(
-    id VARCHAR(150) NOT NULL,
-    report VARCHAR(150) NOT NULL,
-    create_time VARCHAR(25) NOT NULL,
-    contents TEXT NOT NULL,
-    applicant VARCHAR(150) NOT NULL,
-    PRIMARY KEY (id)
-);
 
 -- 记录订单和发票的编号顺序
 CREATE TABLE IF NOT EXISTS order_num(
@@ -309,7 +313,6 @@ CREATE TABLE IF NOT EXISTS order_data(
 CREATE TABLE IF NOT EXISTS invoice(
     order_id VARCHAR(150) NOT NULL,
     number VARCHAR(150) NOT NULL,
-    ty VARCHAR(30) NOT NULL,
     title VARCHAR(30) NOT NULL,
     deadline VARCHAR(30),
     description TEXT,
@@ -324,18 +327,3 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     finish INT NOT NULL,
     PRIMARY KEY (order_id, date)
 );
--- 全公司订单视图
-create view company_order as
-select
-    o.*,
-    u.name as salesman_name,
-    c.name as customer_name,
-    c.company,
-    p.name as product_name
-from
-    order_data o
-    join user u on u.id = o.salesman
-    join customer c on c.id = o.customer
-    join product p on p.id = o.product
-order by
-    o.create_time desc

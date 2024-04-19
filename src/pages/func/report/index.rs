@@ -302,10 +302,10 @@ fn __query_statement(
         3 => "is not null".to_owned(),
         _ => return Err(Response::invalid_value("ty值非法")),
     };
-    let ac = if param.ac.is_empty() {
-        String::new()
+    let ac_filter = if param.ac.is_empty() {
+        "left join customer c on c.id=r.ac".to_owned()
     } else {
-        format!("and c.id = '{}'", param.ac)
+        format!("join customer c on c.id=r.ac and c.id = '{}'", param.ac)
     };
     let query = format!(
         "select r.*, a.name as applicant_name, 
@@ -314,7 +314,7 @@ fn __query_statement(
         from report r
         join user a on r.applicant=a.id 
         join user rev on rev.id=r.reviewer
-        left join customer c on c.id=r.ac {ac}
+        {ac_filter}
         where (r.ty {ty}) 
             and ({send_time})
             and ({processing_time})
@@ -322,6 +322,7 @@ fn __query_statement(
             and (r.reviewer {reviewer}) 
             and (r.applicant {applicant})
             {cc}
+        order by r.send_time desc
         limit {}
         ",
         param.limit

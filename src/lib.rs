@@ -90,6 +90,11 @@ impl MYSQL {
         )
     }
 }
+lazy_static::lazy_static! {
+    pub static ref CONFIG: Config = {
+        Config::read()
+    };
+}
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct Config {
     port: u16,

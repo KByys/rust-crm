@@ -1,11 +1,11 @@
-pub mod cache;
+// pub mod cache;
 use std::collections::HashMap;
 
 use axum::{extract::Path, http::HeaderMap, routing::post, Json, Router};
 use mysql::prelude::Queryable;
 use serde_json::json;
 
-use crate::{bearer, database::get_conn, libs::dser::deserialize_roles, parse_jwt_macro, Response, ResponseResult};
+use crate::{bearer, database::DBC, libs::dser::deserialize_roles, parse_jwt_macro, Response, ResponseResult};
 
 use super::account::User;
 
@@ -18,7 +18,7 @@ pub fn user_router() -> Router {
 }
 
 async fn get_user_name(Path(id): Path<String>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let name: Option<String> =
         conn.query_first(format!("SELECT name FROM user WHERE id = '{id}' LIMIT 1"))?;
     Ok(Response::ok(json!(name)))
@@ -32,7 +32,7 @@ struct LimitParams {
 }
 async fn query_limit_user(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let _uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: LimitParams = serde_json::from_value(value)?;
     let filter = if data.customer.is_empty() {

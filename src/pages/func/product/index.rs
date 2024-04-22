@@ -1,5 +1,5 @@
 use crate::{
-    bearer, commit_or_rollback, database::{c_or_r, get_conn}, get_cache, libs::{
+    bearer, commit_or_rollback, database::DBC, libs::{
         cache::PRODUCT_CACHE, dser::{deser_f32, serialize_f32_to_string}, gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME
     }, log, pages::{
         account::get_user,
@@ -115,7 +115,7 @@ struct ProductParams {
 
 async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
@@ -140,7 +140,7 @@ async fn add_product(header: HeaderMap, part: Multipart) -> ResponseResult {
 
 async fn add_product_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
@@ -282,7 +282,7 @@ async fn update_product_store(
     Json(value): Json<Value>,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{user} 请求更新产品 {} 的库存", id);
@@ -296,7 +296,7 @@ async fn update_product_store(
 
 async fn update_product(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
@@ -320,7 +320,7 @@ async fn update_product(header: HeaderMap, part: Multipart) -> ResponseResult {
 
 async fn update_product_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn).await?;
     if !verify_perms!(
@@ -401,7 +401,7 @@ struct QueryParams {
 }
 
 async fn query_product(Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let param_str = value.to_string();
     if let Some(data) = PRODUCT_CACHE.get(&param_str) {
         log!("查询产品信息，缓存命中");
@@ -465,7 +465,7 @@ async fn query_by(Path(id): Path<String>) -> ResponseResult {
         log!("产品--缓存命中");
         return Ok(Response::ok(data));
     }
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let mut data: Option<ProductParams> = conn.query_first(format!(
         "SELECT *, 1 as custom_fields, 1 as inventory FROM product WHERE id = '{id}' ORDER BY create_time"
     ))?;
@@ -488,7 +488,7 @@ async fn delete_storehouse(
     Json(value): Json<Vec<String>>,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let user = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&user, &mut conn).await?;
     if !verify_perms!(
@@ -508,7 +508,7 @@ async fn delete_storehouse(
 }
 async fn delete_product(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let user = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&user, &mut conn).await?;
     if !verify_perms!(

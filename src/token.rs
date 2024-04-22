@@ -6,7 +6,7 @@ use jwt::{Header, SignWithKey, Token, VerifyWithKey};
 use mysql::{prelude::Queryable, PooledConn};
 use sha2::Sha512;
 
-use crate::libs::{headers::Bearer, time::TIME};
+use crate::{database::DB, libs::{headers::Bearer, time::TIME}};
 /// 从请求头中获取token
 #[macro_export]
 macro_rules! bearer {
@@ -59,7 +59,7 @@ pub struct JWToken {
     pub exp: i64,
 }
 impl JWToken {
-    pub fn verify(&self, conn: &mut PooledConn) -> mysql::Result<TokenVerification> {
+    pub fn verify<'err>(&self, conn: &mut DB<'err>) -> mysql::Result<TokenVerification> {
         // 检查用户是否存在
         let is_exist = if self.sub {
             conn.query_first::<String, String>(format!(

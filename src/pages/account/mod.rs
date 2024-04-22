@@ -16,14 +16,13 @@ mod logout;
 mod register;
 use crate::{
     bearer,
-    database::get_conn,
-    libs::{dser::*, time::TIME},
+    database::{DB, DBC},
+    libs::{cache::USER_CACHE, dser::*, time::TIME},
     parse_jwt_macro,
     perm::verify_permissions,
     Response, ResponseResult,
 };
 
-use super::user::cache::USER_CACHE;
 /// 员工数据
 #[derive(Debug, serde::Serialize, FromRow, serde::Deserialize, Clone)]
 pub struct User {
@@ -64,7 +63,7 @@ pub fn account_router() -> Router {
 }
 
 async fn get_role() -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String| s)?;
     Ok(Response::ok(json!(roles)))
 }
@@ -97,7 +96,7 @@ struct Password {
 // }
 async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let password: Password = serde_json::from_value(value)?;
     let digest = md5::compute(password.password);
@@ -118,13 +117,13 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     Ok(Response::empty())
 }
 
-pub async fn get_user(id: &str, conn: &mut PooledConn) -> Result<User, Response> {
-    if let Some(user) = USER_CACHE.read().await.get(id) {
+pub async fn get_user<'err>(id: &str, conn: &mut DB<'err>) -> Result<User, Response> {
+    if let Some(user) = USER_CACHE.get(id) {
         Ok(user.clone())
     } else {
         let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
                 AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
-        USER_CACHE.write().await.insert(id.to_owned(), u.clone());
+        USER_CACHE.insert(id.to_owned(), u.clone());
         Ok(u)
     }
 }
@@ -136,7 +135,7 @@ pub fn get_user_with_phone_number(number: &str, conn: &mut PooledConn) -> Result
 
 async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;
     let count: usize = match depart.as_str() {
@@ -160,7 +159,7 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let _id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user: Option<User> =
         conn.query_first(format!("SELECT * FROM user WHERE id = '{id}' LIMIT 1"))?;
@@ -169,7 +168,7 @@ async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseR
 
 async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;
     let data: Vec<Value> = match depart.as_str() {

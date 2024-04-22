@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer, commit_or_rollback,
-    database::get_conn,
+    database::DBC,
     libs::{
         dser::{deser_empty_to_none, split_files},
         gen_file_link, gen_id, parse_multipart, FilePart, TimeFormat, TIME,
@@ -52,7 +52,7 @@ struct InsertParams {
 
 async fn add_sign(header: HeaderMap, part: Multipart) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let part = parse_multipart(part).await?;
     let param = serde_json::from_str(&part.json)?;
@@ -65,7 +65,7 @@ async fn add_sign(header: HeaderMap, part: Multipart) -> ResponseResult {
 
 async fn add_sign_json(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let param: InsertParams = serde_json::from_value(value)?;
     commit_or_rollback!(__add_sign, &mut conn, (&uid, &param, None))?;
@@ -170,7 +170,7 @@ struct SignRecord {
 
 async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let param: QueryParams = serde_json::from_value(value)?;
@@ -282,7 +282,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
 
 async fn delete_sign_record(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let key: Option<(i32, Option<String>)> = conn.query_first(format!(
         "select 1, file from sign where id = '{id}' and signer = '{uid}' limit 1"

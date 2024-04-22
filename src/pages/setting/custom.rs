@@ -6,7 +6,8 @@ use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, commit_or_rollback, database::{c_or_r, get_conn}, debug_info, libs::time::{TimeFormat, TIME}, parse_jwt_macro, perm::{action::OtherGroup, get_role}, verify_perms, Response, ResponseResult
+    bearer, commit_or_rollback, database::{DB, DBC}, debug_info, libs::time::{TimeFormat, TIME}, pages::account::get_user, 
+    parse_jwt_macro, perm::action::OtherGroup, verify_perms, Response, ResponseResult
 };
 
 #[derive(serde::Deserialize, Debug)]
@@ -21,12 +22,11 @@ pub struct CustomInfos {
     new_value: String,
 }
 
-async fn verify_perm(headers: HeaderMap, conn: &mut PooledConn) -> Result<String, Response> {
+async fn verify_perm<'err>(headers: HeaderMap, conn: &mut DB<'err>) -> Result<String, Response> {
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, conn => true);
-    let mut conn = get_conn()?;
-    let role = get_role(&id, &mut conn)?;
-    if verify_perms!(&role, OtherGroup::NAME, OtherGroup::CUSTOM_FIELD) {
+    let user = get_user(&id, conn).await?;
+    if verify_perms!(&user.role, OtherGroup::NAME, OtherGroup::CUSTOM_FIELD) {
         Ok(id)
     } else {
         Err(Response::permission_denied())
@@ -159,7 +159,7 @@ impl CustomFields {
 }
 
 pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!("添加自定义字段，操作者：{}，数据：{:?}", id, value));
     let data: CustomInfos = serde_json::from_value(value)?;
@@ -217,7 +217,7 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
 }
 
 pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "添加自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -249,7 +249,7 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 }
 
 pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义字段，操作者：{}，数据：{:#?}",
@@ -267,8 +267,7 @@ pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
     } else if data.new_value.is_empty() || data.old_value.is_empty() {
         return Err(Response::invalid_value("new_value 或 old_value 不能为空"));
     }
-    conn.query_drop("BEGIN")?;
-    c_or_r(_update_custom_field, &mut conn, &data, false)?;
+    commit_or_rollback!(_update_custom_field, &mut conn, &data)?;
     Ok(Response::empty())
 }
 
@@ -308,7 +307,7 @@ fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 }
 
 pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -332,7 +331,7 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 }
 
 pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段，操作者：{}，数据：{:?}",
@@ -343,7 +342,7 @@ pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         return Err(Response::invalid_value("ty 大于 1"));
     }
     conn.query_drop("BEGIN")?;
-    c_or_r(_delete_custom_field, &mut conn, &data, false)?;
+    commit_or_rollback!(_delete_custom_field, &mut conn, &data)?;
     Ok(Response::empty())
 }
 
@@ -378,7 +377,7 @@ fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 }
 
 pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -430,7 +429,7 @@ pub async fn get_custom_info() -> ResponseResult {
 }
 
 pub async fn query_custom_fields(Path((ty, id)): Path<(u8, String)>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
 
     let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;
     Ok(Response::ok(json!(data)))

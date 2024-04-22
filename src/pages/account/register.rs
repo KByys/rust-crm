@@ -1,13 +1,14 @@
 use super::{get_user, User};
+
+use crate::database::DBC;
 use crate::libs::{dser::*, gen_id, TIME};
 use crate::pages::check_drop_down_box;
 use crate::perm::action::AccountGroup;
 use crate::perm::roles::ROLE_TABLES;
-use crate::perm::verify_permissions;
-use crate::{bearer, database::get_conn, debug_info, parse_jwt_macro, Response, ResponseResult};
+use crate::{bearer, debug_info, parse_jwt_macro, Response, ResponseResult};
 use crate::{catch, verify_perms};
 use axum::{http::HeaderMap, Json};
-use mysql::{params, prelude::Queryable, PooledConn};
+use mysql::{params, prelude::Queryable};
 use serde_json::{json, Value};
 
 /// 12345678 的md5值
@@ -37,8 +38,7 @@ macro_rules! __insert_user {
     };
 }
 pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
-    let mut conn: PooledConn = get_conn()?;
-    println!("{}", value);
+    let mut conn = DBC.lock().await;
     let mut root: Root = serde_json::from_value(value)?;
     let k: Option<String> = conn.query_first("SELECT 1 FROM user WHERE role = 'root'")?;
     if k.is_some() {
@@ -63,7 +63,7 @@ pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
 
 pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     debug_info(format!("注册操作，操作者{}，数据:{:?}", id, value));
     let mut regis: User = serde_json::from_value(value)?;
@@ -100,5 +100,4 @@ async fn ver_user_perm(adm: &User, regis: &User) -> bool {
                 AccountGroup::CREATE,
                 Some([role_name].as_slice())
             ))
-
 }

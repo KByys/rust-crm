@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer, commit_or_rollback,
-    database::get_conn,
+    database::{DB, DBC},
     get_cache,
     libs::{cache::ORDER_CACHE, dser::deser_empty_to_none, gen_id, TimeFormat, TIME},
     log, mysql_stmt,
@@ -42,7 +42,7 @@ pub fn order_router() -> Router {
 
 async fn add_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let mut order: Order = serde_json::from_value(value)?;
     let user = get_user(&uid, &mut conn).await?;
@@ -101,8 +101,8 @@ macro_rules! verify_order {
     }};
 }
 
-async fn __add_order(
-    conn: &mut PooledConn,
+async fn __add_order<'err>(
+    conn: &mut DB<'err>,
     (order, user): (&mut Order, &User),
 ) -> Result<(), Response> {
     verify_order!(conn, order, user);
@@ -214,7 +214,7 @@ struct UpdateStatusParams {
 }
 async fn update_order_status(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let mut param: UpdateStatusParams = serde_json::from_value(value)?;
@@ -318,7 +318,7 @@ struct UpdateOrderParam {
 
 async fn update_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let data: UpdateOrderParam = serde_json::from_value(value)?;
@@ -411,7 +411,7 @@ fn query_order_by_id(conn: &mut PooledConn, id: &str) -> Result<Order, Response>
     }
     let order: Option<Order> = conn.exec_first(
         "select o.*, u.name as salesman_name, c.name as customer_name, 
-        c.company, p.name as product_name
+        c.company, p.name as product_name, p.price as product_price
         from order_data o
         join user u on u.id = o.salesman
         join customer c on c.id = o.customer
@@ -439,8 +439,8 @@ struct QueryParams {
     data: String,
 }
 
-async fn query_person_order(
-    conn: &mut PooledConn,
+async fn query_person_order<'err>(
+    conn: &mut DB<'err>,
     param: &QueryParams,
     user: &User,
 ) -> Result<Vec<Order>, Response> {
@@ -509,8 +509,8 @@ async fn query_person_order(
     .map_err(Into::into)
 }
 
-async fn query_department_order(
-    conn: &mut PooledConn,
+async fn query_department_order<'err>(
+    conn: &mut DB<'err>,
     param: &QueryParams,
     user: &User,
 ) -> Result<Vec<Order>, Response> {
@@ -588,7 +588,7 @@ async fn query_company_order(conn: &mut PooledConn, user: &User) -> Result<Vec<O
 
 async fn query_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{}-{} 请求查询订单", user.department, user.name);
@@ -640,7 +640,7 @@ struct PayParam {
 
 async fn finish_repayment(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let param: PayParam = serde_json::from_value(value)?;

@@ -1,6 +1,6 @@
 use crate::{
     bearer,
-    database::get_conn,
+    database::DBC,
     libs::time::{TimeFormat, TIME},
     log,
     pages::account::get_user,
@@ -29,7 +29,7 @@ pub fn sea_router() -> Router {
 
 async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let data: ID = serde_json::from_value(value)?;
@@ -95,7 +95,7 @@ async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> R
 
 async fn pop_customer_from_sea(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ID = serde_json::from_value(value)?;
     let time = TIME::now()?;
@@ -150,7 +150,7 @@ struct SeaInfo {
 
 async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: Sea = serde_json::from_value(value)?;
 
@@ -211,7 +211,7 @@ struct SeaPerm {
 
 async fn set_sea_perm(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     parse_jwt_macro!(&bearer, &mut conn => true);
     let data: SeaPerm = serde_json::from_value(value)?;
     unsafe {

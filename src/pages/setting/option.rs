@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer, commit_or_rollback,
-    database::get_conn,
+    database::DBC,
     debug_info,
     libs::time::{TimeFormat, TIME},
     parse_jwt_macro,
@@ -71,7 +71,7 @@ macro_rules! parse_option {
     ($headers:expr, $value:expr, $begin:expr) => {
         {
             let bearer = bearer!(&$headers);
-            let mut conn = get_conn()?;
+            let mut conn = DBC.lock().await;
             let id = parse_jwt_macro!(&bearer, &mut conn => true);
 
             let role: String = op::some!(conn.query_first(format!("SELECT role FROM user WHERE id = '{id}'"))?; ret Err(Response::not_exist("用户不存在")));

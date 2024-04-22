@@ -1,8 +1,9 @@
 // #[forbid(unused)]
 // mod table;
-use std::fmt::Display;
+use std::{fmt::Display, sync::Arc};
 
 use mysql::{prelude::Queryable, Pool, PooledConn, Result};
+use tokio::sync::{Mutex, MutexGuard};
 
 pub struct Database;
 impl Database {
@@ -100,71 +101,87 @@ macro_rules! mysql_stmt {
 #[macro_export]
 macro_rules! commit_or_rollback {
     (async $fn:expr, $conn:expr, $params:expr) => {{
-        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        use mysql::prelude::Queryable;
+        $conn.query_drop("begin")?;
         match $fn($conn, $params).await {
             Ok(ok) => {
-                mysql::prelude::Queryable::query_drop($conn, "commit")?;
+                $conn.query_drop("commit")?;
                 Ok(ok)
             }
             Err(e) => {
-                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                $conn.query_drop("rollback")?;
                 Err(e)
             }
         }
     }};
     (async $fn:expr, $conn:expr, $($args:expr), +) => {{
-        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        use mysql::prelude::Queryable;
+        $conn.query_drop("begin")?;
         match $fn($conn, $($args ,)+).await {
             Ok(ok) => {
-                mysql::prelude::Queryable::query_drop($conn, "commit")?;
+                $conn.query_drop("commit")?;
                 Ok(ok)
             }
             Err(e) => {
-                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                $conn.query_drop("rollback")?;
                 Err(e)
             }
         }
     }};
     ($fn:expr, $conn:expr, $params:expr) => {{
-        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        use mysql::prelude::Queryable;
+        $conn.query_drop("begin")?;
         match $fn($conn, $params) {
             Ok(ok) => {
-                $conn.query_drop("COMMIT")?;
+                $conn.query_drop("commit")?;
                 Ok(ok)
             }
             Err(e) => {
-                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                $conn.query_drop("rollback")?;
                 Err(e)
             }
         }
     }};
     ($fn:expr, $conn:expr, $($args:expr), +) => {{
-        mysql::prelude::Queryable::query_drop($conn, "begin")?;
+        use mysql::prelude::Queryable;
+        $conn.query_drop("begin")?;
         match $fn($conn, $($args ,)+) {
             Ok(ok) => {
-                mysql::prelude::Queryable::query_drop($conn, "commit")?;
+                $conn.query_drop("commit")?;
                 Ok(ok)
             }
             Err(e) => {
-                mysql::prelude::Queryable::query_drop($conn, "rollback")?;
+                $conn.query_drop("rollback")?;
                 Err(e)
             }
         }
     }};
 }
-
+pub type DB<'err> = MutexGuard<'err, PooledConn>;
 /// 连接数据库
-pub fn get_conn() -> Result<PooledConn> {
-    unsafe { Pool::new(MYSQL_URI.as_str())?.get_conn() }
+pub fn __get_conn() -> Result<PooledConn> {
+    Pool::new(CONFIG.mysql.uri().as_str())?.get_conn()
 }
-// use table::Table;
+lazy_static::lazy_static! {
+    /// 全局数据库连接池
+    pub static ref DBC: Arc<Mutex<PooledConn>> = {
+        Arc::new(
+            Mutex::new(
+                Pool::new( CONFIG.mysql.uri().as_str())
+                .expect("数据库连接失败")
+                .get_conn()
+                .expect("数据库连接失败")
+            )
+        )
+    };
+}
 
-use crate::{Response, MYSQL_URI};
+use crate::{Response, CONFIG};
 
 pub fn create_table() -> Result<()> {
-    let mut conn = get_conn()?;
+    let mut conn = __get_conn()?;
     let sql = include_str!("./table.sql");
-    for s in sql.split(';').filter(|s|!s.trim().is_empty()) {
+    for s in sql.split(';').filter(|s| !s.trim().is_empty()) {
         conn.query_drop(s)?
     }
     Ok(())

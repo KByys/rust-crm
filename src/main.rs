@@ -1,21 +1,19 @@
-use std::fs::create_dir;
+use std::{fs::create_dir, time::Duration};
 
 use axum::{extract::DefaultBodyLimit, http::Method, Router};
 use crm_rust::{
-    database::get_conn,
-    pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS, USER_CACHE},
+    database::__get_conn,
+    libs::cache::clear_cache,
+    pages::{DROP_DOWN_BOX, STATIC_CUSTOM_BOX_OPTIONS, STATIC_CUSTOM_FIELDS},
     perm::roles::ROLE_TABLES,
-    read_data, Config, MYSQL_URI,
+    read_data, CONFIG,
 };
 use tower_http::cors::{Any, CorsLayer};
 #[tokio::main]
 async fn main() {
     _create_all_dir().unwrap();
     read_data();
-    let setting = Config::read();
-    unsafe {
-        MYSQL_URI = setting.mysql_addr();
-    }
+
     crm_rust::database::create_table().unwrap();
     unsafe { init_static() };
     let router = Router::new()
@@ -28,8 +26,18 @@ async fn main() {
                 .allow_headers(Any),
         )
         .layer(DefaultBodyLimit::max(20 * 1024 * 1024));
+    std::thread::spawn(|| { // 定时任务，每过10分钟清空所有缓存
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let mut interval = tokio::time::interval(Duration::from_secs(600));
+            loop {
+                interval.tick().await;
+                clear_cache();
+                println!("定时删除缓存成功");
+            }
+        })
+    });
     axum::serve(
-        tokio::net::TcpListener::bind(format!("0.0.0.0:{}", setting.port()))
+        tokio::net::TcpListener::bind(format!("0.0.0.0:{}", CONFIG.port()))
             .await
             .unwrap(),
         router,
@@ -39,7 +47,7 @@ async fn main() {
 }
 /// 初始化静态数据
 unsafe fn init_static() {
-    let mut conn = get_conn().expect("初始化失败");
+    let mut conn = __get_conn().expect("初始化失败");
 
     ROLE_TABLES.init(&mut conn);
     STATIC_CUSTOM_FIELDS

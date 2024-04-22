@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::get_conn,
+    database::{DB, DBC},
     libs::headers::Bearer,
     log,
     pages::account::get_user,
@@ -14,7 +14,7 @@ use crate::{
     ResponseResult,
 };
 
-use super::{get_user_with_phone_number};
+use super::get_user_with_phone_number;
 
 #[derive(serde::Deserialize)]
 struct LoginID {
@@ -23,7 +23,7 @@ struct LoginID {
 }
 
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
         verify_login_token(&bearer, &mut conn).await
     } else {
@@ -31,7 +31,7 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
     }
 }
 
-async fn verify_login_token(bearer: &Bearer, conn: &mut PooledConn) -> ResponseResult {
+async fn verify_login_token<'err>(bearer: &Bearer, conn: &mut DB<'err>) -> ResponseResult {
     let token = match parse_jwt(bearer) {
         Some(token) if !token.sub => return Err(Response::token_error("客户账号无法进行员工登录")),
         None => {
@@ -40,15 +40,6 @@ async fn verify_login_token(bearer: &Bearer, conn: &mut PooledConn) -> ResponseR
         }
         Some(token) => token,
     };
-    // let tbn: Option<i64> = conn.query_first(format!(
-    //     "SELECT tbn FROM token WHERE ty = 0 AND id = '{}'",
-    //     token.id
-    // ))?;
-    // if tbn.is_some_and(|tbn| tbn >= token.iat) {
-    //     log!("用户登录失败，原因: token已过期");
-    //     return Err(Response::token_error("token已过期，无法刷新，请重新登录"));
-    // }
-
     match token.verify(conn)? {
         TokenVerification::Ok => {
             let user = get_user(&token.id, conn).await?;

@@ -1,6 +1,6 @@
 use crate::{
     bearer, commit_or_rollback,
-    database::get_conn,
+    database::DBC,
     libs::{
         dser::{deser_empty_to_none, deserialize_time_scope},
         gen_id, TimeFormat, TIME,
@@ -42,7 +42,7 @@ struct InsertReportParams {
 
 async fn add_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: InsertReportParams = serde_json::from_value(value)?;
     let user = get_user(&uid, &mut conn).await?;
@@ -90,7 +90,7 @@ fn __insert_report(
 
 async fn delete_report(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{}-{}请求删除报告 {}", user.department, user.name, id);
@@ -126,7 +126,7 @@ struct ReadParams {
 
 async fn read_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let data: ReadParams = serde_json::from_value(value)?;
@@ -178,7 +178,7 @@ struct UpdateParams {
 }
 async fn update_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let data: UpdateParams = serde_json::from_value(value)?;
@@ -255,7 +255,7 @@ struct Report {
 
 async fn query_report(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{}-{} 发起查询报告请求", user.department, user.name);

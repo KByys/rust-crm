@@ -66,7 +66,13 @@ impl FromRow for Order {
                 model: get!(map, "repayment_model"),
                 instalment: Vec::new()
             },
-            product: Product {discount:get!(map,"discount"),id:get!(map,"product"),name:get!(map,"product_name"),amount:get!(map,"amount"), price: get!(map, "product_price") },
+            product: Product {
+                discount: get!(map, "discount"),
+                id: get!(map, "product"),
+                name: get!(map, "product_name"),
+                amount: get!(map, "amount"),
+                price: get!(map, "product_price")
+            },
             customer: Customer {
                 id: get!(map, "customer"),
                 address: get!(map, "address"),

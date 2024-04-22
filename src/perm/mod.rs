@@ -3,12 +3,13 @@ use std::collections::HashMap;
 
 use crate::{
     bearer,
-    database::get_conn,
+    database::DBC,
     parse_jwt_macro,
     perm::{action::groups, roles::ROLE_TABLES},
     Response, ResponseResult,
 };
 use axum::{http::HeaderMap, routing::post, Router};
+use dashmap::DashMap;
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -33,6 +34,11 @@ lazy_static::lazy_static! {
             std::fs::write("data/perm", json!(map.clone()).to_string().as_bytes()).expect("写入权限文件失败");
             map
         };
+        // let mut dash_map = DashMap::new();
+        // for (key, value) in map {
+        //     dash_map.insert(key, value);
+        // }
+        // dash_map
         Mutex::new(map)
     };
 }
@@ -317,7 +323,7 @@ macro_rules! verify_perms {
 }
 
 async fn get_perm(headers: HeaderMap) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let role = get_role(&id, &mut conn)?;

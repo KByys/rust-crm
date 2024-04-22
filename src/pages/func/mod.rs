@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use axum::Router;
 use mysql::prelude::Queryable;
 
-use crate::{log, pages::STATIC_CUSTOM_FIELDS, Response};
+use crate::{log, Response};
 
 use self::customer::index::CustomCustomerData;
 

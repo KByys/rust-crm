@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::get_conn,
+    database::DBC,
     libs::{gen_id, time::TIME, TimeFormat},
     log,
     pages::account::get_user,
@@ -43,7 +43,7 @@ async fn insert_colleague(
     Json(value): Json<Value>,
 ) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&id, &mut conn).await?;
     let mut params: Colleague = serde_json::from_value(value)?;
@@ -75,7 +75,7 @@ async fn insert_colleague(
 
 async fn update_colleague(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: Colleague = serde_json::from_value(value)?;
     check(&id, &params.id, &mut conn)?;
@@ -104,7 +104,7 @@ fn check(id: &str, col: &str, conn: &mut PooledConn) -> Result<(), Response> {
 
 async fn delete_colleague(headers: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let user_id = parse_jwt_macro!(&bearer, &mut conn => true);
     check(&user_id, &id, &mut conn)?;
     conn.query_drop(format!(
@@ -115,7 +115,7 @@ async fn delete_colleague(headers: HeaderMap, Path(id): Path<String>) -> Respons
 }
 
 async fn query_colleagues(Path(customer): Path<String>) -> ResponseResult {
-    let mut conn = get_conn()?;
+    let mut conn = DBC.lock().await;
     let data: Vec<Colleague> = conn.query(format!(
         "SELECT id, name, phone FROM customer_colleague WHERE customer='{}' ORDER BY create_time",
         customer

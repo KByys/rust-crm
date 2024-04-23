@@ -359,7 +359,7 @@ async fn __update_order(
             conn.exec_drop(
                 "update order_instalment 
             set interest=:inter, original_amount=:oa, date=:date 
-            where order_id =:id and date ==:date and finish = 0 limit 1",
+            where order_id =:id and date =:date and finish = 0 limit 1",
                 params! {
                     "inter" => &rep.interest,
                     "oa" => &rep.original_amount,

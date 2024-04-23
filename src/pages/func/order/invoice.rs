@@ -26,12 +26,15 @@ impl Invoice {
         )
     }
     pub fn delete(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
+        if id.is_empty() {
+            return Ok(());
+        }
         conn.exec_drop("delete from invoice where order_id=? and number=? limit 1", (id, &self.number))
     }
     pub fn insert(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
         conn.exec_drop(
             "insert into  invoice (order_id, number, title, deadline, description)
-                values (:id, :title, :dl, :d)",
+                values (:id, :num, :title, :dl, :d)",
             params! {
                 "num" => &self.number,
                 "title" => &self.title,

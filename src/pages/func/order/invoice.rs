@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, FromRow, Default)]
 pub struct Invoice {
+    #[serde(deserialize_with = "crate::libs::deserialize_any_to_bool")]
     pub required: bool,
     pub deadline: String,
     pub title: String,

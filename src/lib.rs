@@ -23,8 +23,8 @@ pub type ResponseResult = Result<Response, Response>;
 macro_rules! get_cache {
     ($map:expr, $arg1:expr, $arg2:expr) => {
         match $map.get($arg1) {
-            Some(rw) => rw.get($arg2).map(|c|c.clone()),
-            _ => None   
+            Some(rw) => rw.get($arg2).map(|c| c.clone()),
+            _ => None,
         }
     };
 }
@@ -73,6 +73,28 @@ pub struct ID {
 pub static mut MYSQL_URI: String = String::new();
 pub static mut SEA_MAX_DAY: u64 = 3;
 pub static mut SEA_MIN_DAY: u64 = 3;
+/// 提成
+pub static mut COMMISSION: i32 = -1;
+pub fn get_commission() -> std::io::Result<i32> {
+    unsafe {
+        if COMMISSION == -1 {
+            match std::fs::read_to_string("data/commission") {
+                Ok(v) => {
+                    COMMISSION = v.parse().unwrap_or(0);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    COMMISSION = 10;
+                    set_commission(10)?;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(COMMISSION)
+    }
+}
+pub fn set_commission(value: i32) -> std::io::Result<()> {
+    std::fs::write("data/commission", value.to_string().as_bytes())
+}
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct MYSQL {

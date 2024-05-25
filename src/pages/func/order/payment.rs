@@ -1,12 +1,15 @@
 use crate::{
-    libs::dser::{deser_f32, deser_yyyy_mm_dd, serialize_f32_to_string},
+    libs::{
+        dser::{deser_f32, deser_yyyy_mm_dd, serialize_f32_to_string},
+        TIME,
+    },
     log,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Default, PartialEq)]
 pub struct Repayment {
     pub model: i32,
     pub instalment: Vec<Instalment>,
@@ -59,7 +62,10 @@ pub struct Instalment {
     pub original_amount: f32,
     #[serde(deserialize_with = "deser_yyyy_mm_dd")]
     pub date: String,
+    #[serde(deserialize_with = "crate::libs::deserialize_any_to_bool")]
     pub finish: bool,
+    #[serde(skip_deserializing)]
+    pub finish_time: Option<String>,
 }
 impl Instalment {
     pub fn query(conn: &mut PooledConn, id: &str) -> mysql::Result<Vec<Instalment>> {
@@ -69,11 +75,12 @@ impl Instalment {
         )
     }
     pub fn insert(conn: &mut PooledConn, id: &str, instalment: &[Instalment]) -> mysql::Result<()> {
+        let time = TIME::now().unwrap_or_default();
         conn.exec_batch(
             "insert into order_instalment 
-            (order_id, interest, original_amount, date, finish) 
+            (order_id, interest, original_amount, date, finish, finish_time) 
             values 
-            (:order_id, :interest, :original_amount, :date, :finish) 
+            (:order_id, :interest, :original_amount, :date, :finish, :finish_time) 
             ",
             instalment.iter().map(|v| {
                 params! {
@@ -81,7 +88,12 @@ impl Instalment {
                     "interest" => v.interest,
                     "original_amount" => v.original_amount,
                     "date" => &v.date,
-                    "finish" => v.finish
+                    "finish" => v.finish,
+                    "finish_time" => if v.finish { 
+                        mysql::Value::Bytes(time.format(crate::libs::TimeFormat::YYYYMMDD_HHMMSS).into_bytes()) 
+                    } else {
+                        mysql::Value::NULL
+                    }
                 }
             }),
         )

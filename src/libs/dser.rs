@@ -1,5 +1,5 @@
 use regex::Regex;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::fmt::Display;
 
@@ -37,6 +37,39 @@ where
 {
     serializer.serialize_str(value.to_string().as_str())
 }
+
+struct BoolVisitor;
+
+impl<'de> Visitor<'de> for BoolVisitor {
+    type Value = bool;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_fmt(format_args!("无法转换成bool格式，请确保值为0/1，true/false"))
+    }
+    fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error, {
+            Ok(v)
+    }
+    fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error, {
+        Ok(v == 1)
+    }
+    fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error, {
+        Ok(v == 1)
+    }
+}
+
+pub fn deserialize_any_to_bool<'de, D>(de: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    de.deserialize_any(BoolVisitor)
+}
+
 
 pub fn deserialize_bool_to_i32<'de, D>(de: D) -> Result<i32, D::Error>
 where

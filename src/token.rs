@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use chrono::{prelude::TimeZone, Days};
 use hmac::{Hmac, Mac};
 use jwt::{Header, SignWithKey, Token, VerifyWithKey};
-use mysql::{prelude::Queryable, PooledConn};
+use mysql::prelude::Queryable;
 use sha2::Sha512;
 
 use crate::{database::DB, libs::{headers::Bearer, time::TIME}};
@@ -59,7 +59,7 @@ pub struct JWToken {
     pub exp: i64,
 }
 impl JWToken {
-    pub fn verify<'err>(&self, conn: &mut DB<'err>) -> mysql::Result<TokenVerification> {
+    pub fn verify(&self, conn: &mut DB<'_>) -> mysql::Result<TokenVerification> {
         // 检查用户是否存在
         let is_exist = if self.sub {
             conn.query_first::<String, String>(format!(
@@ -109,19 +109,49 @@ impl JWToken {
         now >= sub_one_day && now <= add_one_day
     }
 }
+
+
 #[macro_export]
 macro_rules! parse_jwt_macro {
     // 解析token，从中获取id信息
     ($bearer:expr, $conn:expr => $sub:expr) => {
-        match $crate::token::parse_jwt($bearer) {
-            Some(jwt) => {
-                if jwt.sub == $sub && jwt.verify($conn)?.is_ok() {
-                    jwt.id
-                } else {
-                    return Err($crate::Response::token_error("Invalid Token"));
+        {
+            if let Some(id) = $crate::libs::cache::TOKEN_CACHE.get($bearer.token()) {
+                id.to_owned()   
+            } else {
+                match $crate::token::parse_jwt($bearer) {
+                    Some(jwt) => {
+                        if jwt.sub == $sub && jwt.verify($conn)?.is_ok() {
+                            $crate::libs::cache::TOKEN_CACHE.insert($bearer.token().to_owned(), jwt.id.clone());
+                            jwt.id
+                        } else {
+                            return Err($crate::Response::token_error("Invalid Token"));
+                        }
+                    }
+                    _ => return Err($crate::Response::token_error("Invalid Token")),
                 }
             }
-            _ => return Err($crate::Response::token_error("Invalid Token")),
+        }
+    };
+    ($bearer:expr => $sub:expr) => {
+        {
+            if let Some(id) = $crate::libs::cache::TOKEN_CACHE.get($bearer.token()) {
+                id.to_owned()   
+            } else {
+                let mut conn = $crate::database::DBC.lock().await;
+                match $crate::token::parse_jwt($bearer) {
+                    Some(jwt) => {
+                        if jwt.sub == $sub && jwt.verify(&mut conn)?.is_ok() {
+                            $crate::libs::cache::TOKEN_CACHE.insert($bearer.token.to_owned(), jwt.id.clone());
+                            jwt.id
+                        } else {
+                            return Err($crate::Response::token_error("Invalid Token"));
+                        }
+                    }
+                    _ => return Err($crate::Response::token_error("Invalid Token")),
+                }
+            }
+
         }
     };
 }

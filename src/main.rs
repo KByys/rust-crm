@@ -66,6 +66,7 @@ fn _create_all_dir() -> std::io::Result<()> {
     _create_dir("resources/product/cover")?;
     _create_dir("resources/approval")?;
     _create_dir("resources/sign")?;
+    _create_dir("resources/order")?;
     Ok(())
 }
 fn _create_dir(path: &str) -> std::io::Result<()> {

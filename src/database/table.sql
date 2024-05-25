@@ -291,11 +291,13 @@ CREATE TABLE IF NOT EXISTS order_data(
     create_time VARCHAR(25) NOT NULL,
     status INT NOT NULL,
     ty VARCHAR(30) NOT NULL,
+    file VARCHAR(150) NULL,
     receipt_account VARCHAR(50),
     salesman VARCHAR(150) NOT NULL,
     payment_method VARCHAR(30),
     repayment_model INT NOT NULL,
     product VARCHAR(150) NOT NULL,
+    pre_price FLOAT NOT NULL,
     discount FLOAT NOT NULL,
     customer VARCHAR(150) NOT NULL,
     address TEXT,
@@ -324,5 +326,6 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     original_amount FLOAT NOT NULL,
     date VARCHAR(25) NOT NULL,
     finish INT NOT NULL,
+    finish_time VARCHAR(25) NULL,
     PRIMARY KEY (order_id, date)
 );

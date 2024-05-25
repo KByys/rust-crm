@@ -18,6 +18,8 @@ pub struct Order {
     pub number: String,
     pub status: i32,
     pub ty: String,
+    #[serde(default)]
+    pub file: Option<String>,
     #[serde(deserialize_with = "deser_empty_to_none")]
     pub transaction_date: Option<String>,
     pub receipt_account: String,
@@ -55,6 +57,7 @@ impl FromRow for Order {
             number: get!(map, "number"),
             status: get!(map, "status"),
             ty: get!(map, "ty"),
+            file: get!(map, "file"),
             transaction_date: get!(map, "transaction_date"),
             receipt_account: get!(map, "receipt_account"),
             salesman: Person {
@@ -71,7 +74,8 @@ impl FromRow for Order {
                 id: get!(map, "product"),
                 name: get!(map, "product_name"),
                 amount: get!(map, "amount"),
-                price: get!(map, "product_price")
+                price: get!(map, "pre_price"),
+                unit: get!(map, "unit"),
             },
             customer: Customer {
                 id: get!(map, "customer"),

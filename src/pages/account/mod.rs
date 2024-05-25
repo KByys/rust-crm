@@ -17,7 +17,7 @@ mod register;
 use crate::{
     bearer,
     database::{DB, DBC},
-    libs::{cache::USER_CACHE, dser::*, time::TIME},
+    libs::{cache::{TOKEN_CACHE, USER_CACHE}, dser::*, time::TIME},
     parse_jwt_macro,
     perm::verify_permissions,
     Response, ResponseResult,
@@ -114,6 +114,7 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
         time.naos(),
         time.naos()
     ))?;
+    TOKEN_CACHE.clear();
     Ok(Response::empty())
 }
 

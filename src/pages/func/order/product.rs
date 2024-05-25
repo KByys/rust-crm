@@ -1,8 +1,8 @@
 use crate::{
-    libs::dser::{deserialize_storehouse, serialize_f32_to_string, deser_f32},
+    libs::dser::serialize_f32_to_string,
     Response,
 };
-use mysql::{params, prelude::Queryable, PooledConn};
+use mysql::{prelude::Queryable, PooledConn};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub fn deserialize_f32_max_1<'de, D>(de: D) -> Result<f32, D::Error>
@@ -23,32 +23,57 @@ pub struct Product {
     #[serde(deserialize_with = "deserialize_f32_max_1")]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub discount: f32,
-    #[serde(deserialize_with = "deser_f32")]
+    #[serde(skip_deserializing)]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub price: f32,
-    pub amount: usize
+    pub amount: usize,
+    #[serde(skip_deserializing)]
+    pub unit: String
 }
 
 impl Product {
-    pub fn price(&self, conn: &mut PooledConn) -> Result<f32, Response> {
-        conn.exec_first(
-            "select price from product where id = ? limit 1",
-            (&self.id,),
-        )
-        .map_err(Into::into)
-        .and_then(|f| {
-            if let Some(f) = f {
-                Ok(f)
-            } else {
-                Err(Response::not_exist("产品不存在"))
-            }
-        })
+    pub fn query_price(
+        &mut self,
+        conn: &mut PooledConn,
+        status: i32,
+        order_id: &str,
+    ) -> Result<(), Response> {
+        if status == 0 {
+            conn.exec_first(
+                "select price from product where id = ? limit 1",
+                (&self.id,),
+            )
+            .map_err(Into::into)
+            .and_then(|f| {
+                if let Some(f) = f {
+                    self.price = f;
+                    Ok(())
+                } else {
+                    Err(Response::not_exist("产品不存在"))
+                }
+            })
+        } else {
+            conn.exec_first(
+                "select pre_price from order_data where id = ? limit 1",
+                (order_id,),
+            )
+            .map_err(Into::into)
+            .and_then(|f| {
+                if let Some(f) = f {
+                    self.price = f;
+                    Ok(())
+                } else {
+                    Err(Response::not_exist("订单不存在"))
+                }
+            })
+        }
     }
-    pub fn price_sum(&self, price: f32) -> f32 {
-        self.amount as f32 * price
+    pub fn price_sum(&self) -> f32 {
+        self.amount as f32 * self.price
     }
 
-    pub fn price_sum_with_discount(&self, price: f32) -> f32 {
-        self.price_sum(price) * self.discount
+    pub fn price_sum_with_discount(&self) -> f32 {
+        let sum = self.price_sum();
+        sum - self.discount * sum
     }
 }

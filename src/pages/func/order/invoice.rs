@@ -26,6 +26,7 @@ impl Invoice {
             },
         )
     }
+    
     pub fn delete(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
         if id.is_empty() {
             return Ok(());

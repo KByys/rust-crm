@@ -29,6 +29,7 @@ impl Repayment {
         }
     }
     pub fn date_is_valid(&self) -> bool {
+
         if self.instalment.len() > 1 {
             let mut end = 1;
             let mut start = 0;

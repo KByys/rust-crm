@@ -93,6 +93,9 @@ pub fn get_commission() -> std::io::Result<i32> {
     }
 }
 pub fn set_commission(value: i32) -> std::io::Result<()> {
+    unsafe {
+        COMMISSION = value;
+    }
     std::fs::write("data/commission", value.to_string().as_bytes())
 }
 

@@ -70,6 +70,7 @@ impl FromRow for Order {
                 instalment: Vec::new()
             },
             product: Product {
+                cover: get!(map, "product_cover"),
                 discount: get!(map, "discount"),
                 id: get!(map, "product"),
                 name: get!(map, "product_name"),

@@ -1,22 +1,36 @@
-use crate::{
-    libs::dser::serialize_f32_to_string,
-    Response,
-};
+use crate::{libs::dser::serialize_f32_to_string, Response};
 use mysql::{prelude::Queryable, PooledConn};
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 pub fn deserialize_f32_max_1<'de, D>(de: D) -> Result<f32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let value: String = Deserialize::deserialize(de)?;
-    if let Ok(f) = value.parse::<f32>() {
-        op::ternary!(f <= 1.0 => Ok(f), Err(serde::de::Error::custom("discount最大值为1")))
-    } else {
-        Err(serde::de::Error::custom("discount不是浮点数格式"))
+    let value: Value = Deserialize::deserialize(de)?;
+    match value {
+        Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                Ok(f as f32)
+            } else if let Some(i) = n.as_i64() {
+                Ok(i as f32)
+            } else if let Some(u) = n.as_u64() {
+                Ok(u as f32)
+            } else {
+                Err(serde::de::Error::custom("discount不是浮点数格式"))
+            }
+        }
+        Value::String(value) => {
+            if let Ok(f) = value.parse::<f32>() {
+                op::ternary!(f <= 1.0 => Ok(f), Err(serde::de::Error::custom("discount最大值为1")))
+            } else {
+                Err(serde::de::Error::custom("discount不是浮点数格式"))
+            }
+        }
+        _ => Err(serde::de::Error::custom("discount不是浮点数格式")),
     }
 }
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Product {
     pub id: String,
     pub name: String,
@@ -26,9 +40,11 @@ pub struct Product {
     #[serde(skip_deserializing)]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub price: f32,
+    #[serde(skip_deserializing)]
+    pub cover: String,
     pub amount: usize,
     #[serde(skip_deserializing)]
-    pub unit: String
+    pub unit: String,
 }
 
 impl Product {

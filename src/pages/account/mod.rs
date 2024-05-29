@@ -122,8 +122,10 @@ pub async fn get_user<'err>(id: &str, conn: &mut DB<'err>) -> Result<User, Respo
     if let Some(user) = USER_CACHE.get(id) {
         Ok(user.clone())
     } else {
-        let u: User = op::some!(conn.query_first(format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
-                AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"))?; ret Err(Response::not_exist("用户不存在")));
+        let query = format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
+        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1");
+        let result = conn.query_first(query)?;
+        let u: User = op::some!(result; ret Err(Response::not_exist("用户不存在")));
         USER_CACHE.insert(id.to_owned(), u.clone());
         Ok(u)
     }

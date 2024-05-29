@@ -9,13 +9,29 @@ pub fn deser_f32<'de, D>(de: D) -> Result<f32, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let value: String = Deserialize::deserialize(de)?;
-    if let Ok(f) = value.parse::<f32>() {
-        Ok(f)
-    } else {
-        Err(serde::de::Error::custom(
+    let value: Value = Deserialize::deserialize(de)?;
+    match value {
+        Value::Number(value) => {
+            if let Some(f) = value.as_f64() {
+                Ok(f as f32)
+            } else if let Some(f) = value.as_i64() {
+                Ok(f as f32)
+            } else {
+                Ok(value.as_u64().unwrap_or(0) as f32)
+            }
+        }
+        Value::String(value) => {
+            if let Ok(f) = value.parse::<f32>() {
+                Ok(f)
+            } else {
+                Err(serde::de::Error::custom(
+                    "浮点数格式格式错误，请检查所有字符串浮点数是否格式正确",
+                ))
+            }
+        }
+        _ => Err(serde::de::Error::custom(
             "浮点数格式格式错误，请检查所有字符串浮点数是否格式正确",
-        ))
+        )),
     }
 }
 
@@ -44,21 +60,26 @@ impl<'de> Visitor<'de> for BoolVisitor {
     type Value = bool;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_fmt(format_args!("无法转换成bool格式，请确保值为0/1，true/false"))
+        formatter.write_fmt(format_args!(
+            "无法转换成bool格式，请确保值为0/1，true/false"
+        ))
     }
     fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error, {
-            Ok(v)
+    where
+        E: serde::de::Error,
+    {
+        Ok(v)
     }
     fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error, {
+    where
+        E: serde::de::Error,
+    {
         Ok(v == 1)
     }
     fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-        where
-            E: serde::de::Error, {
+    where
+        E: serde::de::Error,
+    {
         Ok(v == 1)
     }
 }
@@ -69,7 +90,6 @@ where
 {
     de.deserialize_any(BoolVisitor)
 }
-
 
 pub fn deserialize_bool_to_i32<'de, D>(de: D) -> Result<i32, D::Error>
 where
@@ -151,7 +171,7 @@ where
     D: Deserializer<'de>,
 {
     let Ok::<String, _>(name) = Deserialize::deserialize(de) else {
-        return Ok(None)
+        return Ok(None);
     };
     if name.is_empty() {
         return Ok(None);
@@ -228,12 +248,13 @@ where
 }
 fn regex_time<'de, D: Deserializer<'de>>(re: &str, de: D, err: &str) -> Result<String, D::Error> {
     let time: String = Deserialize::deserialize(de)?;
+    println!("{}", time);
     if time.is_empty() {
         return Ok(String::new());
     }
     let regex = Regex::new(re).unwrap();
-    if regex.is_match(&time) {
-        Ok(time)
+    if let Some(value) = op::catch!(regex.captures(&time)?.get(0)) {
+        Ok(value.as_str().to_owned())
     } else {
         Err(serde::de::Error::custom(format!(
             "Invalid Time Format. 时间格式应当为'{err}'"
@@ -265,7 +286,7 @@ pub fn deser_yyyy_mm_dd<'de, D>(de: D) -> Result<String, D::Error>
 where
     D: Deserializer<'de>,
 {
-    regex_time(r"(\d{4})-(\d{2})-(\d{2})", de, "YYYY-MM-DD HH:MM:SS")
+    regex_time(r"(\d{4})-(\d{2})-(\d{2})", de, "YYYY-MM-DD")
 }
 pub fn deser_yyyy_mm_dd_hh_mm_ss<'de, D>(de: D) -> Result<String, D::Error>
 where
@@ -310,8 +331,8 @@ fn op_regex_time<'de, D: Deserializer<'de>>(
         return Ok(None);
     }
     let regex = Regex::new(re).unwrap();
-    if regex.is_match(&time) {
-        Ok(Some(time))
+    if let Some(value) = op::catch!(regex.captures(&time)?.get(0)) {
+        Ok(Some(value.as_str().to_owned()))
     } else {
         Err(serde::de::Error::custom(format!(
             "Invalid Time Format. 时间格式应当为'{err}'"

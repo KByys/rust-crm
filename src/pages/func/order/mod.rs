@@ -18,13 +18,16 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, commit_or_rollback, database::{DB, DBC}, get_cache, libs::{
-        cache::ORDER_CACHE, dser::deser_empty_to_none, gen_file_link, gen_id, parse_multipart,
-        TimeFormat, TIME,
-    }, log, mysql_stmt, pages::{
-        account::{get_user, User},
-        func::order::payment::Instalment,
-    }, parse_jwt_macro, perm::action::OtherGroup, response::BodyFile, verify_perms, Response, ResponseResult
+    bearer, commit_or_rollback,
+    database::{DB, DBC},
+    get_cache,
+    libs::{cache::ORDER_CACHE, gen_file_link, gen_id, parse_multipart, TimeFormat, TIME},
+    log, mysql_stmt,
+    pages::account::{get_user, User},
+    parse_jwt_macro,
+    perm::action::OtherGroup,
+    response::BodyFile,
+    verify_perms, Response, ResponseResult,
 };
 
 use self::{
@@ -252,7 +255,9 @@ async fn __add_order<'err>(
             "shipped_storehouse" => &order.ship.storehouse
         },
     )?;
-
+    for item in &mut order.repayment.instalment {
+        item.finish = order.status == 2;
+    }
     order.repayment.smart_insert(&order.id, conn)?;
     Ok(())
 }
@@ -261,11 +266,17 @@ async fn __add_order<'err>(
 struct UpdateStatusParams {
     id: String,
     status: i32,
-    #[serde(deserialize_with = "deser_empty_to_none")]
+    #[serde(default)]
+    #[serde(deserialize_with = "crate::libs::dser::op_deser_yyyy_mm_dd_hh_mm_ss")]
     transaction_date: Option<String>,
+    #[serde(default)]
     invoice: Invoice,
+    #[serde(default)]
+    repayment: Repayment,
+    #[serde(default)]
     ship: Ship,
 }
+
 async fn update_order_status(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
     let mut conn = DBC.lock().await;
@@ -273,101 +284,158 @@ async fn update_order_status(header: HeaderMap, Json(value): Json<Value>) -> Res
     let user = get_user(&uid, &mut conn).await?;
     let mut param: UpdateStatusParams = serde_json::from_value(value)?;
     log!("{user} 请求修改订单{}状态", param.id);
-    commit_or_rollback!(__update_order_status, &mut conn, &mut param, &user)?;
+    commit_or_rollback!(_new_update_order_status, &mut conn, &mut param, &user)?;
     log!("{user} 成功修改订单{}状态", param.id);
     ORDER_CACHE.clear();
     Ok(Response::ok(json!("修改订单状态成功")))
 }
-fn __update_order_status(
+
+fn _new_update_order_status(
     conn: &mut PooledConn,
     param: &mut UpdateStatusParams,
     user: &User,
 ) -> Result<(), Response> {
-    let order = query_order_by_id(conn, &param.id)?;
-    if order.status == 2 {
+    let mut order = query_order_by_id(conn, &param.id)?;
+    if user.id != order.salesman.id {
         log!(
-            "系统拒绝{}修改订单{}的状态，因为该订单处于已完成状态",
+            "错误，{} 无法修改 {}-{} 的订单",
             user,
-            param.id
+            order.salesman.id,
+            order.salesman.name()
         );
-        return Err(Response::dissatisfy("该订单处于已完成状态, 不允许被修改"));
-    } else if param.status < order.status {
-        log!(
-            "系统拒绝{}修改订单{}的状态，status不能减小，成交代收订单不能调整为意向订单",
-            user,
-            param.id
-        );
-        return Err(Response::dissatisfy("成交代收订单不能调整为意向订单"));
-    } else if param.status > 0 && param.transaction_date.is_none() {
-        log!(
-            "系统拒绝{}修改订单{}的状态， status不为0时，transaction_date必须设置",
-            user,
-            param.id
-        );
-        return Err(Response::dissatisfy("transaction_date必须设置"));
-    } else if param.status == 2 && order.status != 2 {
-        let key: Option<i32> = conn.exec_first(
-            "select 1 from order_instalment where order_id = ? and finish = 0 limit 1",
-            (&param.id,),
-        )?;
-        if key.is_some() {
+        return Err(Response::permission_denied());
+    }
+    match order.status {
+        0 if param.status > 0 => {
+            if param.transaction_date.is_none() {
+                log!(
+                    "系统拒绝{}修改订单{}的状态， status不为0时，transaction_date必须设置",
+                    user,
+                    param.id
+                );
+                return Err(Response::dissatisfy("transaction_date必须设置"));
+            } else if param.ship.shipped
+                && (param.ship.date.is_none() || param.ship.storehouse.is_none())
+            {
+                log!(
+                    "系统拒绝{}修改订单{}的状态，当设置成发货状态时，date和storehouse必须设置",
+                    user,
+                    param.id
+                );
+                return Err(Response::dissatisfy("ship的date和storehouse必须设置"));
+            }
+            order.product.query_price(conn, 0, &param.id)?;
+            if param.repayment.is_invalid() || !param.repayment.date_is_valid() {
+                return Err(Response::invalid_value("回款数据错误"));
+            } else if order.product.price_sum_with_discount() != param.repayment.sum() {
+                return Err(Response::invalid_value("回款金额错误"));
+            } else if param.repayment.instalment.iter().any(|inv|inv.date.is_empty()) {
+                return Err(Response::invalid_value("回款日期必须设置"));
+            }
+            for item in &mut param.repayment.instalment {
+                item.finish = param.status == 2;
+            }
+            conn.exec_drop(
+                "delete from order_instalment where order_id = ?",
+                (&param.id,),
+            )?;
+            param.repayment.smart_insert(&param.id, conn)?;
+
+            if param.invoice.required {
+                let stmt = mysql_stmt!("invoice", order_id, number, title, deadline, description,);
+                let number = gen_number!(
+                    conn,
+                    1,
+                    format!("INV{}{}", order.salesman.name(), order.customer.name)
+                );
+                conn.exec_drop(
+                    stmt,
+                    params! {
+                        "order_id" => &order.id,
+                        "number" => number,
+                        "title" => &param.invoice.title,
+                        "deadline" => &param.invoice.deadline,
+                        "description" => &param.invoice.description
+                    },
+                )?;
+            }
+            conn.exec_drop(
+                "update order_data set transaction_date=:td, 
+                        shipped=:sd, shipped_date=:sdd, 
+                        status=:status,
+                        repayment_model=:model,
+                        shipped_storehouse=:ssh, invoice_required=:ir where id = :id limit 1",
+                params! {
+                    "sd" => param.ship.shipped,
+                    "sdd" => &param.ship.date,
+                    "td" => &param.transaction_date,
+                    "ssh" => &param.ship.storehouse,
+                    "ir" => &param.invoice.required,
+                    "id" => &param.id,
+                    "model" => &param.repayment.model,
+                    "status" => &param.status
+                },
+            )?;
+            Ok(())
+        }
+        1 if param.status == 2 => {
+            let key: Option<i32> = conn.exec_first(
+                "select 1 from order_instalment where order_id = ? and finish = 0 limit 1",
+                (&param.id,),
+            )?;
+            if key.is_some() {
+                log!(
+                    "系统拒绝{}修改订单{}的状态，修改status为2时，所有回款都必须已完成",
+                    user,
+                    param.id
+                );
+                return Err(Response::dissatisfy("无法完成订单，存在未完成的回款"));
+            }
+            conn.exec_drop(
+                "update order_data set status = 2 where id = ? limit 1",
+                (order.id.as_str(),),
+            )?;
+            Ok(())
+        }
+        2 => {
             log!(
-                "系统拒绝{}修改订单{}的状态，修改status为2时，所有回款都必须已完成",
+                "系统拒绝{}修改订单{}的状态，因为该订单处于已完成状态",
                 user,
                 param.id
             );
-            return Err(Response::dissatisfy("无法完成订单，存在未完成的回款"));
+            Err(Response::dissatisfy("该订单处于已完成状态, 不允许被修改"))
+        }
+        i if i == param.status => Ok(()),
+        _ => {
+            log!("系统拒绝{}修改订单{}的状态，status值非法", user, param.id);
+            Err(Response::dissatisfy("status非法"))
         }
     }
-
-    if !order.ship.shipped {
-        if order.ship.shipped && (order.ship.storehouse.is_none() || order.ship.date.is_none()) {
-            log!(
-                "系统拒绝{}修改订单{}的状态，当设置成发货状态时，date和storehouse必须设置",
-                user,
-                param.id
-            );
-            return Err(Response::dissatisfy("ship的date和storehouse必须设置"));
-        }
-        conn.exec_drop("update order_data set  shipped= ?, shipped_date=?, shipped_storehouse=? where id = ? limit 1", 
-    (param.ship.shipped, &param.ship.date, &param.ship.storehouse, &param.id))?;
-    }
-
-    conn.exec_drop(
-        "update order_data set status = ?, transaction_date=? where id = ? limit 1",
-        (param.status, &param.transaction_date, &param.id),
-    )?;
-
-    conn.exec_drop(
-        "update order_data set invoice_required = ? where id = ? limit 1",
-        (param.invoice.required, &param.id),
-    )?;
-    if order.invoice.required {
-        if param.invoice.required {
-            param.invoice.update(&param.id, conn)?;
-        } else {
-            param.invoice.delete(&param.id, conn)?;
-        }
-    } else if param.invoice.required {
-        param.invoice.number = gen_number!(
-            conn,
-            1,
-            format!("INV{}{}", order.salesman.name(), order.customer.name)
-        );
-        param.invoice.insert(&param.id, conn)?;
-    }
-    Ok(())
 }
 
 #[derive(Deserialize)]
-struct UpdateOrderParam {
+struct UpdateOrderParam0 {
     id: String,
+    // status: i32,
+    ty: String,
+    receipt_account: String,
+    payment_method: String,
+    // status = 0
+    product: Product,
+    customer: Customer,
+}
+#[derive(Deserialize)]
+struct UpdateOrderParam1 {
+    id: String,
+    // status: i32,
     ty: String,
     receipt_account: String,
     payment_method: String,
     repayment: Repayment,
-    product: Product,
-    customer: Customer,
+    #[serde(deserialize_with = "crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss")]
+    transaction_date: String,
+    invoice: Invoice,
+    ship: Ship,
 }
 
 async fn update_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
@@ -375,100 +443,189 @@ async fn update_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseRe
     let mut conn = DBC.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
-    let mut data: UpdateOrderParam = serde_json::from_value(value)?;
-    log!("{user} 请求更新订单 {}", data.id);
-    commit_or_rollback!(async __update_order, &mut conn, &mut data, &user)?;
-    log!("{user} 成功更新订单 {}", data.id);
+    log!("{user} 请求更新订单");
+    commit_or_rollback!(async __update_order, &mut conn, value, &user)?;
+    log!("{user} 成功更新订单");
     ORDER_CACHE.clear();
     Ok(Response::ok(json!("更新订单成功")))
 }
-async fn __update_order(
-    conn: &mut PooledConn,
-    param: &mut UpdateOrderParam,
-    user: &User,
-) -> Result<(), Response> {
-    verify_order!(conn, param, user);
-    let mut order = query_order_by_id(conn, &param.id)?;
-    param.product.query_price(conn, order.status, &order.id)?;
-    let sum = param.product.price_sum_with_discount();
-    if sum != param.repayment.sum() {
-        log!("系统拒绝{}修改订单{}的请求, 付款金额不对", user, param.id);
-        return Err(Response::invalid_value("付款金额不对"));
-    }
-    order.repayment.smart_query(&param.id, conn)?;
-    if order.repayment != param.repayment {
-        if !param.repayment.is_invalid() || !param.repayment.date_is_valid() {
-            log!("系统拒绝{}修改订单{}的请求，回款数据非法", user, param.id);
-            return Err(Response::invalid_value("回款数据非法"));
-        }
 
-        let already_finish_instalment = order.repayment.instalment.iter().any(|inv| inv.finish);
-        if already_finish_instalment {
-            if order.repayment != param.repayment {
-                log!(
-                    "系统拒绝{}修改订单{}的请求，存在已完成的回款，repayment所有数据禁止修改",
-                    user,
-                    param.id
-                );
-                return Err(Response::invalid_value(
-                    "存在已完成的回款，repayment所有数据禁止修改",
-                ));
-            }
-        } else {
-            conn.query_drop(format!(
-                "update order_data set repayment_model = '{}' where id = '{}' limit 1",
-                param.repayment.model, param.id
-            ))?;
-            conn.exec_drop(
-                "delete from order_instalment where order_id = ?",
-                (&param.id,),
-            )?;
-            Instalment::insert(conn, &param.id, &param.repayment.instalment)?;
-        }
+async fn __update_order(conn: &mut PooledConn, value: Value, user: &User) -> Result<(), Response> {
+    let Some(id) = op::catch!(value.as_object()?.get("id")?.as_str()) else {
+        return Err(Response::invalid_format("缺少id"));
+    };
+    let mut order = query_order_by_id(conn, id)?;
+    if order.salesman.id != user.id {
+        log!(
+            "用户{}无法修改{}-{}的订单",
+            user,
+            order.salesman.id,
+            order.salesman.name
+        );
+        return Err(Response::permission_denied());
     }
+    if order.status == 0 {
+        let mut param: UpdateOrderParam0 = serde_json::from_value(value)?;
+        update_status0(conn, &mut param)
+    } else if order.status == 1 {
+        let mut param: UpdateOrderParam1 = serde_json::from_value(value)?;
+        update_status1(conn, user, &mut param, &mut order)
+    } else {
+        log!(
+            "系统拒绝{}修改订单{}的状态，因为该订单处于已完成状态",
+            user,
+            id
+        );
+        Err(Response::dissatisfy("该订单处于已完成状态, 不允许被修改"))
+    }
+}
+
+fn update_status0(conn: &mut PooledConn, param: &mut UpdateOrderParam0) -> Result<(), Response> {
+    param.product.query_price(conn, 0, &param.id)?;
     conn.exec_drop(
-        "update order_data set ty=:ty, receipt_account=:ra, payment_method=:pm where id=:id limit 1
+        "update order_data set ty=:ty, receipt_account=:ra, payment_method=:pm, 
+        customer=:customer, address=:address,purchase_unit=:purchase_unit,
+        product=:product, discount=:discount, amount=:amount, pre_price=:price
+        where id=:id limit 1
      ",
         params! {
             "ty" => &param.ty,
             "ra" => &param.receipt_account,
             "pm" => &param.payment_method,
-            "id" => &param.id
+            "id" => &param.id,
+            "customer" => &param.customer.id,
+            "address" => &param.customer.address,
+            "purchase_unit" => &param.customer.purchase_unit,
+            "product" => &param.product.id,
+            "discount" => &param.product.discount,
+            "amount" => &param.product.amount,
+            "price" => &param.product.price
+
         },
     )?;
-    if order.status == 0 {
-        conn.exec_drop(
-            "update order_data set customer=?, address=?, purchase_unit=? where id = ? limit 1",
-            (
-                &param.customer.id,
-                &param.customer.address,
-                &param.customer.purchase_unit,
-                &param.id,
-            ),
-        )?;
 
-        conn.exec_drop(
-            "update order_data set product=?, discount=?, amount=? where id = ? limit 1",
-            (
-                &param.product.id,
-                &param.product.discount,
-                &param.product.amount,
-                &param.id,
-            ),
-        )?;
-    }
+    // conn.exec_drop(
+    //     "update order_data set customer=?, address=?, purchase_unit=? where id = ? limit 1",
+    //     (
+    //         &param.customer.id,
+    //         &param.customer.address,
+    //         &param.customer.purchase_unit,
+    //         &param.id,
+    //     ),
+    // )?;
+
+    // conn.exec_drop(
+    //     "update order_data set product=?, discount=?, amount=? where id = ? limit 1",
+    //     (
+    //         &param.product.id,
+    //         &param.product.discount,
+    //         &param.product.amount,
+    //         &param.id,
+    //     ),
+    // )?;
     Ok(())
 }
 
+fn update_status1(
+    conn: &mut PooledConn,
+    user: &User,
+    param: &mut UpdateOrderParam1,
+    order: &mut Order,
+) -> Result<(), Response> {
+    order.product.query_price(conn, order.status, &order.id)?;
+
+    if param.ship.shipped && (param.ship.date.is_none() || param.ship.storehouse.is_none()) {
+        log!(
+            "系统拒绝{}修改订单{}的状态，当设置成发货状态时，date和storehouse必须设置",
+            user,
+            param.id
+        );
+        return Err(Response::dissatisfy("ship的date和storehouse必须设置"));
+    }
+    let already_finish = order.repayment.instalment.iter().any(|v| v.finish);
+    if !already_finish {
+        if param.repayment.is_invalid() || !param.repayment.date_is_valid() {
+            return Err(Response::invalid_value("回款数据错误"));
+        } else if order.product.price_sum_with_discount() != param.repayment.sum() {
+            println!(
+                "{}  {}",
+                order.product.price_sum_with_discount(),
+                param.repayment.sum()
+            );
+            return Err(Response::invalid_value("回款金额错误"));
+        }
+        conn.exec_drop(
+            "update order_data set repayment_model = ? where id = ? limit 1",
+            (param.repayment.model, &param.id),
+        )?;
+        conn.exec_drop(
+            "delete from order_instalment where order_id = ?",
+            (&param.id,),
+        )?;
+        for item in &mut order.repayment.instalment {
+            item.finish = order.status == 2;
+        }
+        param.repayment.smart_insert(&param.id, conn)?;
+    }
+    conn.exec_drop(
+        "update order_data set ty=:ty, receipt_account=:ra, payment_method=:pm, invoice_required=:ir, 
+            shipped=:ship, shipped_date=:date, shipped_storehouse=:storehouse, transaction_date=:trdate
+            where id=:id limit 1
+     ",
+        params! {
+            "ty" => &param.ty,
+            "ra" => &param.receipt_account,
+            "pm" => &param.payment_method,
+            "trdate" => &param.transaction_date,
+            "id" => &param.id,
+            "ir" => &param.invoice.required,
+            "ship" => &param.ship.shipped,
+            "storehouse" => &param.ship.storehouse,
+            "date" => &param.ship.date
+        },
+    )?;
+
+    if param.invoice.required {
+        if !order.invoice.required {
+            let number = gen_number!(
+                conn,
+                1,
+                format!("INV{}{}", order.salesman.name(), order.customer.name)
+            );
+            param.invoice.number = number;
+            param.invoice.insert(&param.id, conn)?;
+        } else {
+            conn.exec_drop(
+                "update invoice set title=:title, deadline=:dl, description=:desc 
+                where order_id = :id",
+                params! {
+                    "id" => &param.id,
+                    "title" => &param.invoice.title,
+                    "dl" => &param.invoice.deadline,
+                    "desc" => &param.invoice.description
+                },
+            )?;
+        }
+    } else {
+        conn.exec_drop(
+            "delete from invoice where order_id = ? limit 1",
+            (&param.id,),
+        )?;
+    }
+
+    Ok(())
+}
 fn query_order_by_id(conn: &mut PooledConn, id: &str) -> Result<Order, Response> {
     if let Some(order) = get_cache!(ORDER_CACHE, "id", id) {
         if let Ok(order) = serde_json::from_value(order) {
+            
             return Ok(order);
         }
     }
     let order: Option<Order> = conn.exec_first(
         "select o.*, u.name as salesman_name, c.name as customer_name, 
-        c.company, p.name as product_name, p.unit
+        c.company, p.name as product_name, p.unit,
+        p.cover as product_cover
         from order_data o
         join user u on u.id = o.salesman
         join customer c on c.id = o.customer
@@ -496,12 +653,14 @@ struct QueryParams {
     data: String,
     #[serde(default)]
     limit: u32,
+    status: i32,
 }
 
 async fn query_person_order<'err>(
     conn: &mut DB<'err>,
     param: &QueryParams,
     user: &User,
+    status: &str,
 ) -> Result<Vec<Order>, Response> {
     let id = if param.data.eq("my") || user.id == param.data {
         log!("{}-{} 正在查询自己的订单", user.department, user.name);
@@ -554,16 +713,19 @@ async fn query_person_order<'err>(
     };
 
     conn.exec(
-        "select o.*, u.name as salesman_name, c.name as customer_name, 
-        c.company, p.name as product_name, p.price as product_price, p.unit
+        format!(
+            "select o.*, u.name as salesman_name, c.name as customer_name, 
+        c.company, p.name as product_name, p.price as product_price, p.unit,
+            p.cover as product_cover
         from order_data o
         join user u on u.id = o.salesman
         join customer c on c.id = o.customer
         join product p on p.id = o.product
-        where o.salesman = ?
+        where o.salesman = ? and o.status {status}
         order by o.create_time desc
         limit ?
-    ",
+    "
+        ),
         (&id, &param.limit),
     )
     .map_err(Into::into)
@@ -573,10 +735,12 @@ async fn query_department_order<'err>(
     conn: &mut DB<'err>,
     param: &QueryParams,
     user: &User,
+    status: &str,
 ) -> Result<Vec<Order>, Response> {
     if !verify_perms!(&user.role, OtherGroup::NAME, OtherGroup::QUERY_ORDER) {
         return Err(Response::permission_denied());
     }
+    dbg!("部门");
     let depart = if param.data.eq("my") || user.department == param.data {
         &user.department
     } else if verify_perms!(
@@ -601,15 +765,18 @@ async fn query_department_order<'err>(
         user.name
     );
     conn.exec(
-        "select o.*, u.name as salesman_name, c.name as customer_name, 
-        c.company, p.name as product_name, p.unit
+        format!(
+            "select o.*, u.name as salesman_name, c.name as customer_name, 
+        c.company, p.name as product_name, p.unit, p.cover as product_cover
         from order_data o
         join user u on u.id = o.salesman and u.department = ?
         join customer c on c.id = o.customer
         join product p on p.id = o.product
+        where o.status {status}
         order by o.create_time desc
         limit ?
-    ",
+    "
+        ),
         (&depart, &param.limit),
     )
     .map_err(Into::into)
@@ -619,6 +786,7 @@ async fn query_company_order(
     conn: &mut PooledConn,
     user: &User,
     limit: u32,
+    status: &str,
 ) -> Result<Vec<Order>, Response> {
     log!("{}-{} 正在查询全公司的订单", user.department, user.name);
     if !verify_perms!(
@@ -634,24 +802,25 @@ async fn query_company_order(
         );
         return Err(Response::permission_denied());
     }
-    conn.exec(
+    conn.query(format!(
         "select o.*,
             u.name as salesman_name,
             c.name as customer_name,
             c.company,
             p.name as product_name,
-            p.unit
+            p.unit,
+            p.cover as product_cover
         from
             order_data o
             join user u on u.id = o.salesman
             join customer c on c.id = o.customer
             join product p on p.id = o.product
+        where o.status {status}
         order by
             o.create_time desc
-        limit ?
-            ",
-        (limit,),
-    )
+        limit {limit}
+            "
+    ))
     .map_err(Into::into)
 }
 
@@ -666,16 +835,20 @@ async fn query_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseRes
     if param.limit == 0 {
         param.limit = 50
     }
-
+    let status = if param.status >= 3 {
+        ">= 0".to_string()
+    } else {
+        format!("={}", param.status)
+    };
     let value = if let Some(value) = get_cache!(ORDER_CACHE, &uid, &param_str) {
         log!("缓存命中");
         value
     } else {
-        log!("缓存未命中");
+        log!("缓存未命中11");
         let mut data = match param.ty {
-            0 => query_person_order(&mut conn, &param, &user).await?,
-            1 => query_department_order(&mut conn, &param, &user).await?,
-            2 => query_company_order(&mut conn, &user, param.limit).await?,
+            0 => query_person_order(&mut conn, &param, &user, &status).await?,
+            1 => query_department_order(&mut conn, &param, &user, &status).await?,
+            2 => query_company_order(&mut conn, &user, param.limit, &status).await?,
             _ => return Ok(Response::empty()),
         };
         for o in &mut data {
@@ -723,6 +896,19 @@ async fn finish_repayment(header: HeaderMap, Json(value): Json<Value>) -> Respon
         param.date
     );
     let time = TIME::now()?;
+    let query = format!(
+        "select date from order_instalment where order_id = '{}' and date = '{}'",
+        param.id, param.date
+    );
+    let key: Option<String> = conn.query_first(query)?;
+    if key.is_none() {
+        log!(
+            "收款失败，无法找到该分期回款：ID: {}, date: {} ",
+            param.id,
+            param.date
+        );
+        return Err(Response::not_exist("无法找到该分期回款"));
+    }
     conn.exec_drop(
         "update order_instalment set finish = 1, finish_time= ? where order_id= ? and date = ? limit 1",
         (time.format(TimeFormat::YYYYMMDD_HHMMSS), &param.id, &param.date),
@@ -773,11 +959,13 @@ fn __delete_order(
     )?;
     conn.exec_drop("delete from order_data where id = ?", (&order_id,))?;
     if let Some(f) = file {
-        std::fs::remove_file(f)?;
+        std::fs::remove_file(format!("resources/order/{f}"))?;
     }
     Ok(())
 }
 
-async fn get_order_file(Path(url): Path<String>) -> Result<BodyFile, (axum::http::StatusCode, String)> {
+async fn get_order_file(
+    Path(url): Path<String>,
+) -> Result<BodyFile, (axum::http::StatusCode, String)> {
     BodyFile::new_with_base64_url("resources/order", &url)
 }

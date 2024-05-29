@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, FromRow, Default)]
 pub struct Invoice {
     #[serde(deserialize_with = "crate::libs::deserialize_any_to_bool")]
+    #[serde(serialize_with = "crate::libs::dser::serialize_bool_to_i32")]
     pub required: bool,
     pub deadline: String,
     pub title: String,
@@ -13,7 +14,7 @@ pub struct Invoice {
 }
 
 impl Invoice {
-    pub fn update(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
+    pub fn _update(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
         conn.exec_drop(
             "update invoice set  title=:title, deadline=:dl,
         description=:d where order_id=:id and number = :num limit 1",
@@ -27,7 +28,7 @@ impl Invoice {
         )
     }
     
-    pub fn delete(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
+    pub fn _delete(&self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
         if id.is_empty() {
             return Ok(());
         }

@@ -64,6 +64,7 @@ pub struct Instalment {
     #[serde(deserialize_with = "deser_yyyy_mm_dd")]
     pub date: String,
     #[serde(deserialize_with = "crate::libs::deserialize_any_to_bool")]
+    #[serde(serialize_with = "crate::libs::dser::serialize_bool_to_i32")]
     pub finish: bool,
     #[serde(skip_deserializing)]
     pub finish_time: Option<String>,

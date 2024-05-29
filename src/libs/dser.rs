@@ -126,6 +126,18 @@ where
         serializer.serialize_bool(false)
     }
 }
+pub fn serialize_bool_to_i32<S>(value: &bool, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if *value {
+        serializer.serialize_i32(1)
+    } else {
+        serializer.serialize_i32(0)
+    }
+}
+
+
 
 pub fn serialize_null_to_default<S>(
     value: &Option<String>,

@@ -329,3 +329,15 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     finish_time VARCHAR(25) NULL,
     PRIMARY KEY (order_id, date)
 );
+create table if not exists storehouse(
+    id VARCHAR(150) NOT NULL,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    create_time VARCHAR(25) NOT NULL,
+    description text NOT NULL,
+    PRIMARY KEY (id)
+);
+
+INSERT
+    IGNORE INTO storehouse (id, name, create_time, description)
+VALUES
+    ('main_storehouse', '主仓库', '0000-00-00 00:00:00', '默认生成');

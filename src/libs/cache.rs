@@ -3,38 +3,13 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use serde_json::Value;
 
-use crate::pages::User;
-// pub fn clear_cache() {
-//     ORDER_CACHE.clear();
-//     CUSTOMER_CACHE.clear();
-//     PRODUCT_CACHE.clear();
-//     OPTION_CACHE.clear();
-//     USER_CACHE.clear();
-// }
-// pub type Cache = Arc<DashMap<String, DashMap<String, Value>>>;
-// lazy_static::lazy_static! {
-//     pub static ref ORDER_CACHE: Cache = {
-//         Arc::new(DashMap::new())
-//     };
-//     pub static ref CUSTOMER_CACHE: Cache = {
-//         Arc::new(DashMap::new())
-//     };
-//     pub static ref PRODUCT_CACHE: Arc<DashMap<String, Value>> = {
-//         Arc::new(DashMap::new())
-//     };
-//     pub static ref OPTION_CACHE: Cache = {
-//         Arc::new(DashMap::new())
-//     };
-//     pub static ref USER_CACHE: Arc<DashMap<String, User>> = {
-//         Arc::new(DashMap::new())
-//     };
-//     pub static ref TOKEN_CACHE: Arc<DashMap<String, Vec<String>>> = {
-//         Arc::new(DashMap::new())
-//     };
-// }
+use crate::{
+    database::__get_conn,
+    pages::{func::store::Storehouse, User},
+};
 
 macro_rules! gen_cache {
-    ($(($N:ident, $T:ty)), +) => {
+    ($(($N:ident, $T:ty, $clear:expr)), +) => {
         lazy_static::lazy_static! {
             $(
                 pub static ref $N: Arc<DashMap<String, $T>> = {
@@ -44,17 +19,33 @@ macro_rules! gen_cache {
         }
         pub fn clear_cache() {
             $(
-                $N.clear();
+                if $clear {
+                    $N.clear();
+                }
             )+
         }
     };
 }
 
-gen_cache!{
-    (ORDER_CACHE, DashMap<String, Value>),
-    (CUSTOMER_CACHE, DashMap<String, Value>),
-    (PRODUCT_CACHE, Value),
-    (OPTION_CACHE, DashMap<String, Value>),
-    (USER_CACHE, User),
-    (TOKEN_CACHE, String)
+gen_cache! {
+    (ORDER_CACHE, DashMap<String, Value>, true),
+    (CUSTOMER_CACHE, DashMap<String, Value>, true),
+    (PRODUCT_CACHE, Value, true),
+    (OPTION_CACHE, DashMap<String, Value>, true),
+    (USER_CACHE, User, false),
+    (TOKEN_CACHE, String, true),
+    (KEY_VALUE_CACHE, Vec<Value>, false)
+}
+use mysql::prelude::Queryable;
+lazy_static::lazy_static! {
+    pub static ref STORE_HOUSE_CACHE: Arc<DashMap<String, Storehouse>> = {
+        let mut conn = __get_conn().expect("连接数据库失败");
+        let map: DashMap<String, Storehouse> = 
+        conn.query::<Storehouse, &str>("select * from storehouse")
+            .expect("连接数据库失败")
+            .into_iter()
+            .map(|v| (v.id.clone(), v))
+            .collect();
+        Arc::new(map)
+    };
 }

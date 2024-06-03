@@ -1,6 +1,6 @@
 use crate::{
     bearer,
-    database::DBC,
+    database::get_db,
     libs::time::{TimeFormat, TIME},
     log,
     pages::account::get_user,
@@ -29,7 +29,8 @@ pub fn sea_router() -> Router {
 
 async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let data: ID = serde_json::from_value(value)?;
@@ -95,7 +96,8 @@ async fn push_customer_to_sea(headers: HeaderMap, Json(value): Json<Value>) -> R
 
 async fn pop_customer_from_sea(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: ID = serde_json::from_value(value)?;
     let time = TIME::now()?;
@@ -132,6 +134,7 @@ async fn pop_customer_from_sea(headers: HeaderMap, Json(value): Json<Value>) -> 
     ))?;
     Ok(Response::empty())
 }
+#[allow(dead_code)]
 #[derive(serde::Deserialize)]
 struct Sea {
     sort: usize,
@@ -150,9 +153,10 @@ struct SeaInfo {
 
 async fn sea_infos(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
-    let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    let data: Sea = serde_json::from_value(value)?;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
+    let _id = parse_jwt_macro!(&bearer, &mut conn => true);
+    let _data: Sea = serde_json::from_value(value)?;
 
     // let mut infos = match Identity::new(&id, &mut conn)? {
     //     Identity::Administrator(_, d) => query(&mut conn, &data, &d)?,
@@ -211,7 +215,8 @@ struct SeaPerm {
 
 async fn set_sea_perm(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     parse_jwt_macro!(&bearer, &mut conn => true);
     let data: SeaPerm = serde_json::from_value(value)?;
     unsafe {

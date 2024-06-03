@@ -1,3 +1,4 @@
+pub mod store;
 mod order;
 mod product;
 pub use product::DEFAULT_PRODUCT_COVER;
@@ -23,6 +24,7 @@ pub fn func_router() -> Router {
         .merge(report::report_router())
         .merge(sign::sign_router())
         .merge(order::order_router())
+        .merge(store::store_router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {

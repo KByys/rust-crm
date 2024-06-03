@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, catch, commit_or_rollback, database::{DB, DBC}, get_cache, libs::{gen_id, parse_multipart, TimeFormat, TIME}, log, pages::{
+    bearer, catch, commit_or_rollback, database::{get_db, DB}, get_cache, libs::{gen_id, parse_multipart, TimeFormat, TIME}, log, pages::{
         account::{get_user, User},
         func::{__update_custom_fields, customer::CUSTOMER_CACHE, get_custom_fields},
     }, parse_jwt_macro, perm::{action::CustomerGroup, roles::role_to_name}, verify_perms, Field, Response, ResponseResult
@@ -218,7 +218,8 @@ struct InsertParams {
 
 async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: InsertParams = serde_json::from_value(value)?;
     let user = get_user(&id, &mut conn).await?;
@@ -349,7 +350,8 @@ fn __query_full_data(
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     if let Some(value) = get_cache!(CUSTOMER_CACHE, "full",  &id) {
@@ -497,7 +499,8 @@ async fn __query_customer_list_data<'err>(
 
 async fn query_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let param_str = value.to_string();
@@ -565,7 +568,8 @@ pub fn check_user_customer(
 }
 async fn update_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: UpdateParams = serde_json::from_value(value)?;
     let user = get_user(&id, &mut conn).await?;

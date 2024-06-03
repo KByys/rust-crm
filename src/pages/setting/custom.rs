@@ -6,7 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, commit_or_rollback, database::{DB, DBC}, debug_info, libs::time::{TimeFormat, TIME}, pages::account::get_user, 
+    bearer, commit_or_rollback, database::{get_db, DB, DBC}, debug_info, libs::time::{TimeFormat, TIME}, pages::account::get_user, 
     parse_jwt_macro, perm::action::OtherGroup, verify_perms, Response, ResponseResult
 };
 
@@ -159,7 +159,8 @@ impl CustomFields {
 }
 
 pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!("添加自定义字段，操作者：{}，数据：{:?}", id, value));
     let data: CustomInfos = serde_json::from_value(value)?;
@@ -217,7 +218,8 @@ fn _insert_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<(), Respo
 }
 
 pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "添加自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -249,7 +251,8 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 }
 
 pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义字段，操作者：{}，数据：{:#?}",
@@ -307,7 +310,8 @@ fn _update_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 }
 
 pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "修改自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -331,7 +335,8 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
 }
 
 pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段，操作者：{}，数据：{:?}",
@@ -377,7 +382,8 @@ fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 }
 
 pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
     debug_info(format!(
         "删除自定义下拉字段的选项，操作者：{}，数据：{:?}",
@@ -429,8 +435,8 @@ pub async fn get_custom_info() -> ResponseResult {
 }
 
 pub async fn query_custom_fields(Path((ty, id)): Path<(u8, String)>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
-
+    let db = get_db().await?;
+    let mut conn = db.lock().await;
     let data = crate::pages::func::get_custom_fields(&mut conn, &id, ty)?;
     Ok(Response::ok(json!(data)))
 }

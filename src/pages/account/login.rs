@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer,
-    database::{DB, DBC},
+    database::{get_db, DB},
     libs::headers::Bearer,
     log,
     pages::account::get_user,
@@ -23,7 +23,8 @@ struct LoginID {
 }
 
 pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
         verify_login_token(&bearer, &mut conn).await
     } else {

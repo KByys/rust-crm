@@ -6,7 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::database::{DB, DBC};
+use crate::database::{get_db, DB};
 use crate::libs::dser::deser_yyyy_mm_dd_hh_mm_ss;
 use crate::libs::TimeFormat;
 use crate::perm::action::CustomerGroup;
@@ -63,7 +63,8 @@ async fn add_appointments(
     Json(value): Json<serde_json::Value>,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: Vec<InsertParams> = serde_json::from_value(value)?;
     commit_or_rollback!(async __add_appoint, &mut conn, (&params, &uid))?;
@@ -96,7 +97,8 @@ async fn __add_appoint(
 
 async fn delete_appointment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     commit_or_rollback!(async __delete_appointment, &mut conn, &id, &uid)?;
     CUSTOMER_CACHE.clear();
@@ -118,7 +120,8 @@ async fn __delete_appointment<'err>(conn: &mut DB<'err>, id: &str, uid: &str) ->
 
 async fn finish_appointment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let _: String = op::some!(conn.query_first(
         format!("select 1 from appointment where id = '{id}' and salesman='{uid}' LIMIT 1"))?;
@@ -150,7 +153,8 @@ async fn update_appointment(
     Json(value): Json<serde_json::Value>,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
 
     let data: UpdateParams = serde_json::from_value(value)?;
@@ -206,7 +210,8 @@ struct Comment {
 }
 
 async fn query_appointment(Path((id, limit)): Path<(String, usize)>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let res: Vec<AppointmentResponse> = conn.query(format!(
         "SELECT app.*, a.name as applicant_name, s.name as salesman_name FROM appointment app
         JOIN user a ON a.id = app.applicant
@@ -235,7 +240,8 @@ struct InsertCommentParams {
 
 async fn insert_comment(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: InsertCommentParams = serde_json::from_value(value)?;
     let time = TIME::now()?;
@@ -266,7 +272,8 @@ struct UpdateCommentParams {
 
 async fn update_comment(header: HeaderMap, Json(value): Json<serde_json::Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data: UpdateCommentParams = serde_json::from_value(value)?;
     conn.query_drop(format!(
@@ -279,7 +286,8 @@ async fn update_comment(header: HeaderMap, Json(value): Json<serde_json::Value>)
 
 async fn delete_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     conn.query_drop(format!(
         "DELETE FROM appoint_comment WHERE id = '{id}' AND applicant = '{uid}' LIMIT 1"
@@ -288,7 +296,8 @@ async fn delete_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseRe
 }
 async fn query_comment(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let _uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let comments: Vec<Comment> = conn.query(format!(
         "select c.*, u.name as applicant_name 

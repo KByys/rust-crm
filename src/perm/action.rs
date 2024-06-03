@@ -43,7 +43,6 @@ impl AccountGroup {
     pub const DELETE: &str = "delete";
 }
 
-
 #[forbid(unused)]
 pub static CUSTOMER: [&str; 10] = [
     CustomerGroup::ACTIVATION,
@@ -55,7 +54,7 @@ pub static CUSTOMER: [&str; 10] = [
     CustomerGroup::TRANSFER_CUSTOMER,
     CustomerGroup::EXPORT_DATA,
     CustomerGroup::RELEASE_CUSTOMER,
-    CustomerGroup::ADD_APPOINT
+    CustomerGroup::ADD_APPOINT,
 ];
 
 pub struct CustomerGroup;
@@ -74,8 +73,16 @@ impl CustomerGroup {
     pub const ADD_APPOINT: &str = "add_appoint";
 }
 #[forbid(unused)]
-pub static STOREHOUSE: [&str; 5] = [StorehouseGroup::ACTIVATION, StorehouseGroup::ADD_PRODUCT,
-StorehouseGroup::UPDATE_PRODUCT, StorehouseGroup::DELETE_PRODUCT, StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY];
+pub static STOREHOUSE: [&str; 8] = [
+    StorehouseGroup::ACTIVATION,
+    StorehouseGroup::ADD_PRODUCT,
+    StorehouseGroup::UPDATE_PRODUCT,
+    StorehouseGroup::DELETE_PRODUCT,
+    StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY,
+    StorehouseGroup::ADD_STOREHOUSE,
+    StorehouseGroup::DELETE_STOREHOUSE,
+    StorehouseGroup::UPDATE_STOREHOUSE,
+];
 
 pub struct StorehouseGroup;
 
@@ -86,6 +93,9 @@ impl StorehouseGroup {
     pub const UPDATE_PRODUCT: &str = "update_product";
     pub const DELETE_PRODUCT: &str = "delete_product";
     pub const ADJUSTING_PRODUCT_INVENTORY: &str = "adjusting_product_inventory";
+    pub const ADD_STOREHOUSE: &str = "add_storehouse";
+    pub const DELETE_STOREHOUSE: &str = "delete_storehouse";
+    pub const UPDATE_STOREHOUSE: &str = "update_storehouse";
     // TODO:
 }
 
@@ -109,7 +119,6 @@ impl FinanceGroup {
     pub const QUERY: &str = "query";
 }
 
-
 #[forbid(unused)]
 pub static OTHER_GROUP: [&str; 6] = [
     OtherGroup::QUERY_SIGN_IN,
@@ -117,7 +126,7 @@ pub static OTHER_GROUP: [&str; 6] = [
     OtherGroup::DROP_DOWN_BOX,
     OtherGroup::SEA_RULE,
     OtherGroup::COMPANY_STAFF_DATA,
-    OtherGroup::QUERY_ORDER
+    OtherGroup::QUERY_ORDER,
 ];
 pub struct OtherGroup;
 

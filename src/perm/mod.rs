@@ -4,13 +4,12 @@ use std::collections::HashMap;
 
 use crate::{
     bearer,
-    database::DBC,
+    database::get_db,
     parse_jwt_macro,
     perm::{action::groups, roles::ROLE_TABLES},
     Response, ResponseResult,
 };
 use axum::{http::HeaderMap, routing::post, Router};
-use dashmap::DashMap;
 use mysql::{prelude::Queryable, PooledConn};
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -123,15 +122,16 @@ unsafe fn role_manager() -> PermissionGroupMap {
             .collect()
         }),
         (StorehouseGroup::NAME, {
-            [
-                (StorehouseGroup::ACTIVATION, vec![]),
-                (StorehouseGroup::ADD_PRODUCT, vec![]),
-                (StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY, vec![]),
-                (StorehouseGroup::DELETE_PRODUCT, vec![]),
-                (StorehouseGroup::UPDATE_PRODUCT, vec![]),
-            ]
-            .into_iter()
-            .map(|(name, key)| (name.to_owned(), key))
+            // [
+            //     (StorehouseGroup::ACTIVATION, vec![]),
+            //     (StorehouseGroup::ADD_PRODUCT, vec![]),
+            //     (StorehouseGroup::ADJUSTING_PRODUCT_INVENTORY, vec![]),
+            //     (StorehouseGroup::DELETE_PRODUCT, vec![]),
+            //     (StorehouseGroup::UPDATE_PRODUCT, vec![]),
+            // ]
+            STOREHOUSE
+            .iter()
+            .map(|v| (v.to_string(), Vec::new()))
             .collect()
         }),
         (OtherGroup::NAME, {
@@ -327,7 +327,8 @@ macro_rules! verify_perms {
 }
 
 async fn get_perm(headers: HeaderMap) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+    let db = get_db().await?;
+    let mut conn = db.lock().await;
     let bearer = bearer!(&headers);
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let role = get_role(&id, &mut conn)?;

@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 
 use crate::{
     bearer, commit_or_rollback,
-    database::{DB, DBC},
+    database::{get_db, DB},
     get_cache,
     libs::{cache::ORDER_CACHE, gen_file_link, gen_id, parse_multipart, TimeFormat, TIME},
     log, mysql_stmt,
@@ -53,7 +53,8 @@ async fn get_commission() -> ResponseResult {
 }
 async fn set_commission(header: HeaderMap, Path(value): Path<i32>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     if user.role.eq("root") {
@@ -71,7 +72,8 @@ async fn upload_order_file(
     part: Multipart,
 ) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let data = parse_multipart(part).await?;
     let Some(f) = data.files.first() else {
@@ -101,7 +103,8 @@ async fn upload_order_file(
 
 async fn add_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let mut order: Order = serde_json::from_value(value)?;
     let user = get_user(&uid, &mut conn).await?;
@@ -279,7 +282,8 @@ struct UpdateStatusParams {
 
 async fn update_order_status(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let mut param: UpdateStatusParams = serde_json::from_value(value)?;
@@ -440,7 +444,8 @@ struct UpdateOrderParam1 {
 
 async fn update_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{user} 请求更新订单");
@@ -826,7 +831,8 @@ async fn query_company_order(
 
 async fn query_order(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{}-{} 请求查询订单", user.department, user.name);
@@ -885,7 +891,8 @@ struct PayParam {
 
 async fn finish_repayment(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let param: PayParam = serde_json::from_value(value)?;
@@ -926,7 +933,8 @@ async fn finish_repayment(header: HeaderMap, Json(value): Json<Value>) -> Respon
 
 async fn delete_order(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     log!("{} 请求删除订单{}", user, id);

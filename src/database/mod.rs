@@ -1,6 +1,10 @@
 // #[forbid(unused)]
 // mod table;
-use std::{fmt::Display, sync::Arc};
+use std::{
+    fmt::Display,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use mysql::{prelude::Queryable, Pool, PooledConn, Result};
 use tokio::sync::{Mutex, MutexGuard};
@@ -158,6 +162,28 @@ macro_rules! commit_or_rollback {
     }};
 }
 pub type DB<'err> = MutexGuard<'err, PooledConn>;
+lazy_static::lazy_static! {
+    pub static ref LAST_LEFT_TIME: Arc<Mutex<Duration>> = {
+        Arc::new(Mutex::new(Duration::from_secs(1)))
+    };
+}
+
+pub async fn get_db() -> Result<Arc<Mutex<PooledConn>>, Response> {
+    let mut last_time = LAST_LEFT_TIME.lock().await;
+    let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;
+    let ten = last_time
+        .checked_add(Duration::from_secs(600))
+        .unwrap_or_default();
+    *last_time = now;
+    if ten < now {
+        let pool = __get_conn()?;
+        log!("更新数据库连接");
+        let mut db = DBC.lock().await;
+        *db = pool;
+    }
+    Ok(Arc::clone(&DBC))
+}
+
 /// 连接数据库
 pub fn __get_conn() -> Result<PooledConn> {
     Pool::new(CONFIG.mysql.uri().as_str())?.get_conn()
@@ -176,10 +202,11 @@ lazy_static::lazy_static! {
     };
 }
 
-use crate::{Response, CONFIG};
+use crate::{log, Response, CONFIG};
 
 pub fn create_table() -> Result<()> {
     let mut conn = __get_conn()?;
+
     let sql = include_str!("./table.sql");
     for s in sql.split(';').filter(|s| !s.trim().is_empty()) {
         conn.query_drop(s)?

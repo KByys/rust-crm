@@ -16,7 +16,7 @@ mod logout;
 mod register;
 use crate::{
     bearer,
-    database::{DB, DBC},
+    database::{get_db, DB},
     libs::{cache::{TOKEN_CACHE, USER_CACHE}, dser::*, time::TIME},
     parse_jwt_macro,
     perm::verify_permissions,
@@ -63,7 +63,8 @@ pub fn account_router() -> Router {
 }
 
 async fn get_role() -> ResponseResult {
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String| s)?;
     Ok(Response::ok(json!(roles)))
 }
@@ -96,7 +97,8 @@ struct Password {
 // }
 async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let password: Password = serde_json::from_value(value)?;
     let digest = md5::compute(password.password);
@@ -138,7 +140,8 @@ pub fn get_user_with_phone_number(number: &str, conn: &mut PooledConn) -> Result
 
 async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;
     let count: usize = match depart.as_str() {
@@ -162,7 +165,8 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let _id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user: Option<User> =
         conn.query_first(format!("SELECT * FROM user WHERE id = '{id}' LIMIT 1"))?;
@@ -171,7 +175,8 @@ async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseR
 
 async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-    let mut conn = DBC.lock().await;
+        let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;
     let data: Vec<Value> = match depart.as_str() {

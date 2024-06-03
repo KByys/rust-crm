@@ -1,6 +1,6 @@
 use super::{get_user, User};
 
-use crate::database::DBC;
+use crate::database::get_db;
 use crate::libs::{dser::*, gen_id, TIME};
 use crate::pages::check_drop_down_box;
 use crate::perm::action::AccountGroup;
@@ -38,7 +38,8 @@ macro_rules! __insert_user {
     };
 }
 pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
-    let mut conn = DBC.lock().await;
+    let db = get_db().await?;
+    let mut conn = db.lock().await;
     let mut root: Root = serde_json::from_value(value)?;
     let k: Option<String> = conn.query_first("SELECT 1 FROM user WHERE role = 'root'")?;
     if k.is_some() {
@@ -63,7 +64,8 @@ pub async fn register_root(Json(value): Json<Value>) -> ResponseResult {
 
 pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-    let mut conn = DBC.lock().await;
+    let db = get_db().await?;
+    let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     debug_info(format!("注册操作，操作者{}，数据:{:?}", id, value));
     let mut regis: User = serde_json::from_value(value)?;

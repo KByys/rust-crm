@@ -1,6 +1,6 @@
 use crate::{
     bearer, commit_or_rollback,
-    database::{get_db, DBC},
+    database::get_db,
     libs::{
         dser::{deser_empty_to_none, deserialize_time_scope},
         gen_id, TimeFormat, TIME,

@@ -1,59 +1,11 @@
-use crate::{
-    libs::{
-        dser::{deser_f32, deser_yyyy_mm_dd, serialize_f32_to_string},
-        TIME,
-    },
-    log,
+use crate::libs::{
+    dser::{deser_f32, serialize_f32_to_string},
+    TIME,
 };
 use mysql::{params, prelude::Queryable, PooledConn};
 use mysql_common::prelude::FromRow;
 use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Default, PartialEq)]
-pub struct Repayment {
-    pub model: i32,
-    pub instalment: Vec<Instalment>,
-}
-impl Repayment {
-    pub fn smart_query(&mut self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
-        self.instalment = Instalment::query(conn, id)?;
-        Ok(())
-    }
-    pub fn is_invalid(&self) -> bool {
-        self.instalment.is_empty() || {
-            let flag = self.model == 0 && self.instalment.len() != 1;
-            if flag {
-                log!("全款有且只能有一期付款")
-            }
-            flag
-        }
-    }
-    pub fn date_is_valid(&self) -> bool {
-
-        if self.instalment.len() > 1 {
-            let mut end = 1;
-            let mut start = 0;
-            while end < self.instalment.len() {
-                if self.instalment[start].date >= self.instalment[end].date {
-                    log!("后一个回款日期必须大于之前的");
-                    return false;
-                }
-                start += 1;
-                end += 1;
-            }
-        }
-        true
-    }
-    pub fn smart_insert(&mut self, id: &str, conn: &mut PooledConn) -> mysql::Result<()> {
-        Instalment::insert(conn, id, &self.instalment)?;
-        Ok(())
-    }
-    pub fn sum(&self) -> f32 {
-        self.instalment.iter().map(|v| v.original_amount).sum()
-    }
-}
-
-#[derive(Deserialize, FromRow, Serialize, PartialEq)]
+#[derive(Deserialize, FromRow, Serialize, PartialEq, Debug)]
 pub struct Instalment {
     #[serde(deserialize_with = "deser_f32")]
     #[serde(serialize_with = "serialize_f32_to_string")]
@@ -61,43 +13,57 @@ pub struct Instalment {
     #[serde(deserialize_with = "deser_f32")]
     #[serde(serialize_with = "serialize_f32_to_string")]
     pub original_amount: f32,
-    #[serde(deserialize_with = "deser_yyyy_mm_dd")]
-    pub date: String,
-    #[serde(deserialize_with = "crate::libs::deserialize_any_to_bool")]
-    #[serde(serialize_with = "crate::libs::dser::serialize_bool_to_i32")]
-    pub finish: bool,
     #[serde(skip_deserializing)]
-    pub finish_time: Option<String>,
+    pub date: Option<String>,
+    #[serde(default)]
+    pub inv_index: i32,
+    #[serde(skip_deserializing)]
+    pub finish: i32,
 }
 impl Instalment {
+    pub fn computed_instalment(instalment: &[Instalment]) -> f32 {
+        instalment
+            .iter()
+            .fold(0.0f32, |output, inv| output + inv.original_amount)
+    }
+
     pub fn query(conn: &mut PooledConn, id: &str) -> mysql::Result<Vec<Instalment>> {
         conn.exec(
-            "select * from order_instalment where order_id = ? order by date",
+            "select * from order_instalment where order_id = ? order by inv_index",
             (id,),
         )
     }
-    pub fn insert(conn: &mut PooledConn, id: &str, instalment: &[Instalment]) -> mysql::Result<()> {
+    pub fn insert(
+        conn: &mut PooledConn,
+        id: &str,
+        instalment: &[Instalment],
+        del: bool,
+    ) -> mysql::Result<()> {
         let time = TIME::now().unwrap_or_default();
-        conn.exec_batch(
-            "insert into order_instalment 
-            (order_id, interest, original_amount, date, finish, finish_time) 
-            values 
-            (:order_id, :interest, :original_amount, :date, :finish, :finish_time) 
-            ",
-            instalment.iter().map(|v| {
+        if del {
+            conn.exec_drop("delete from order_instalment where order_id = ?", (&id,))?;
+        }
+        for (i, v) in instalment.iter().enumerate() {
+            conn.exec_drop(
+                "insert into order_instalment 
+                (order_id, interest, original_amount, date, finish, inv_index) 
+                values 
+                (:order_id, :interest, :original_amount, :date, :finish, :inv_index) 
+                ",
                 params! {
-                    "order_id" => id,
-                    "interest" => v.interest,
-                    "original_amount" => v.original_amount,
-                    "date" => &v.date,
-                    "finish" => v.finish,
-                    "finish_time" => if v.finish { 
-                        mysql::Value::Bytes(time.format(crate::libs::TimeFormat::YYYYMMDD_HHMMSS).into_bytes()) 
-                    } else {
-                        mysql::Value::NULL
-                    }
-                }
-            }),
-        )
+                        "order_id" => id,
+                        "interest" => v.interest,
+                        "original_amount" => v.original_amount,
+                        "finish" => v.finish,
+                        "date" => if v.finish == 1 {
+                           time.format(crate::libs::TimeFormat::YYYYMMDD_HHMMSS)
+                        } else {
+                            "".to_string()
+                        },
+                        "inv_index" => i + 1
+                },
+            )?;
+        }
+        Ok(())
     }
 }

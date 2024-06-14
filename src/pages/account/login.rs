@@ -26,7 +26,16 @@ pub async fn user_login(headers: HeaderMap, Json(value): Json<Value>) -> Respons
         let db = get_db().await?;
     let mut conn = db.lock().await;
     if let Some(bearer) = bearer!(&headers, Allow Missing) {
-        verify_login_token(&bearer, &mut conn).await
+        match verify_login_token(&bearer, &mut conn).await {
+            Ok(res) => Ok(res) ,
+            Err(err) => {
+                if let Ok(value) = verify_password(value, &mut conn).await {
+                    Ok(value)
+                } else {
+                    Err(err)
+                }
+            }
+        }
     } else {
         verify_password(value, &mut conn).await
     }
@@ -54,14 +63,14 @@ async fn verify_login_token<'err>(bearer: &Bearer, conn: &mut DB<'err>) -> Respo
                 Ok(Response::ok(json!({
                     "token": bearer.token(),
                     "perm": "all",
-                    "info": user
+                    "info": user.as_ref()
                 })))
             } else {
                 let perms = ROLES_GROUP_MAP.lock().await;
                 Ok(Response::ok(json!({
                     "token": bearer.token(),
                     "perm": perms.get(&user.role),
-                    "info": user
+                    "info": user.as_ref()
                 })))
             }
         }

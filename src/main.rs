@@ -32,7 +32,6 @@ async fn main() {
             loop {
                 interval.tick().await;
                 clear_cache();
-                println!("定时删除缓存成功");
             }
         })
     });

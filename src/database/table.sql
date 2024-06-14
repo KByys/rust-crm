@@ -295,20 +295,25 @@ CREATE TABLE IF NOT EXISTS order_data(
     receipt_account VARCHAR(50),
     salesman VARCHAR(150) NOT NULL,
     payment_method VARCHAR(30),
-    repayment_model INT NOT NULL,
-    product VARCHAR(150) NOT NULL,
-    pre_price FLOAT NOT NULL,
-    discount FLOAT NOT NULL,
     customer VARCHAR(150) NOT NULL,
     address TEXT,
     purchase_unit VARCHAR(100),
     transaction_date VARCHAR(25) NULL,
     invoice_required INT NOT NULL,
-    amount INT NOT NULL,
+    comment TEXT NOT NULL,
     shipped INT NOT NULL,
     shipped_date VARCHAR(25) NULL,
     shipped_storehouse VARCHAR(30) NULL,
     PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS order_product(
+    order_id VARCHAR(150) NOT NULL,
+    id VARCHAR(150) NOT NULL,
+    price FLOAT NOT NULL,
+    discount FLOAT NOT NULL,
+    amount INT NOT NULL,
+    PRIMARY KEY (order_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS invoice(
@@ -324,10 +329,10 @@ CREATE TABLE IF NOT EXISTS order_instalment(
     order_id VARCHAR(150) NOT NULL,
     interest FLOAT NOT NULL,
     original_amount FLOAT NOT NULL,
+    inv_index INT NOT NULL,
     date VARCHAR(25) NOT NULL,
     finish INT NOT NULL,
-    finish_time VARCHAR(25) NULL,
-    PRIMARY KEY (order_id, date)
+    PRIMARY KEY (order_id, inv_index)
 );
 create table if not exists storehouse(
     id VARCHAR(150) NOT NULL,

@@ -181,7 +181,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
     match param.scope {
         0 => {
             let (id, depart) = if param.data.eq("my") || param.data.eq(&uid) {
-                (uid.clone(), user.department)
+                (uid.clone(), user.department.clone())
             } else if let (true, all) = verify_perms!(
                 &user.role,
                 OtherGroup::NAME,
@@ -191,7 +191,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
             ) {
                 let other = get_user(&param.data, &mut conn).await?;
                 if all || other.department.eq(&user.department) {
-                    (other.id, other.department)
+                    (other.id.clone(), other.department.clone())
                 } else {
                     return Err(Response::permission_denied());
                 }
@@ -224,7 +224,7 @@ async fn query_sign_records(header: HeaderMap, Json(value): Json<Value>) -> Resp
                 all || (depart && param.data.eq("my") || param.data.eq(&user.department))
             };
             if flag {
-                let depart = ternary!(param.data.eq("my") => user.department, param.data);
+                let depart = ternary!(param.data.eq("my") => &user.department, &param.data);
 
                 let query = format!(
                     "select s.*, sr.name as signer_name, c.name as customer_name, c.company, 1 as department

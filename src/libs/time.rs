@@ -107,10 +107,10 @@ impl TIME {
     pub fn second(&self) -> usize {
         self.second
     }
+    
 }
 fn parse_time(naos: i64) -> (usize, usize, usize, usize, usize, usize) {
     let local = chrono::Local.timestamp_nanos(naos);
-
     let time = local.to_rfc3339();
     let time_str = time.as_str();
     (

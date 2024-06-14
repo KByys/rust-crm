@@ -1,5 +1,6 @@
 pub mod store;
 mod order;
+pub use order::Order;
 mod product;
 pub use product::DEFAULT_PRODUCT_COVER;
 mod report;

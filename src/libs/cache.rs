@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::{
     database::__get_conn,
-    pages::{func::store::Storehouse, User},
+    pages::{func::{store::Storehouse, Order}, User},
 };
 
 macro_rules! gen_cache {
@@ -28,11 +28,12 @@ macro_rules! gen_cache {
 }
 
 gen_cache! {
-    (ORDER_CACHE, DashMap<String, Value>, true),
+    (ORDER_CACHE, DashMap<String, Arc<Vec<Order>>>, true),
+    (ORDER_CACHE_WITH_ID, Arc<Order>, true),
     (CUSTOMER_CACHE, DashMap<String, Value>, true),
     (PRODUCT_CACHE, Value, true),
     (OPTION_CACHE, DashMap<String, Value>, true),
-    (USER_CACHE, User, false),
+    (USER_CACHE, Arc<User>, false),
     (TOKEN_CACHE, String, true),
     (KEY_VALUE_CACHE, Vec<Value>, false)
 }

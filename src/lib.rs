@@ -11,7 +11,6 @@ pub mod pages;
 
 use std::fmt::Arguments;
 
-use chrono::prelude::TimeZone;
 use libs::time::TIME;
 pub use libs::{base64_decode, base64_encode};
 use mysql_common::prelude::FromRow;
@@ -29,15 +28,6 @@ macro_rules! get_cache {
     };
 }
 
-#[inline]
-pub fn debug_info(info: String) {
-    let time = TIME::now().unwrap_or_default().naos();
-    println!(
-        "{} -- {}",
-        chrono::Local.timestamp_nanos(time as i64).to_rfc3339(),
-        info
-    )
-}
 
 #[macro_export]
 macro_rules! log {

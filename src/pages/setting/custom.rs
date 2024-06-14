@@ -6,7 +6,7 @@ use mysql_common::prelude::FromRow;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, commit_or_rollback, database::{get_db, DB, DBC}, debug_info, libs::time::{TimeFormat, TIME}, pages::account::get_user, 
+    bearer, commit_or_rollback, database::{get_db, DB}, libs::time::{TimeFormat, TIME}, pages::account::get_user, 
     parse_jwt_macro, perm::action::OtherGroup, verify_perms, Response, ResponseResult
 };
 
@@ -162,7 +162,6 @@ pub async fn insert_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!("添加自定义字段，操作者：{}，数据：{:?}", id, value));
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
@@ -221,10 +220,6 @@ pub async fn insert_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "添加自定义下拉字段的选项，操作者：{}，数据：{:?}",
-        id, value
-    ));
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
@@ -254,10 +249,6 @@ pub async fn update_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "修改自定义字段，操作者：{}，数据：{:#?}",
-        id, value
-    ));
     let data: CustomInfos = serde_json::from_value(value)?;
     if !matches!(data.display.as_str(), "0" | "1" | "2") {
         return Err(Response::invalid_value(format!(
@@ -313,10 +304,6 @@ pub async fn update_box_option(headers: HeaderMap, Json(value): Json<Value>) -> 
         let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "修改自定义下拉字段的选项，操作者：{}，数据：{:?}",
-        id, value
-    ));
 
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.new_value.is_empty() {
@@ -338,10 +325,6 @@ pub async fn delete_custom_field(headers: HeaderMap, Json(value): Json<Value>) -
         let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "删除自定义下拉字段，操作者：{}，数据：{:?}",
-        id, value
-    ));
     let data: CustomInfos = serde_json::from_value(value)?;
     if data.ty > 1 {
         return Err(Response::invalid_value("ty 大于 1"));
@@ -382,13 +365,9 @@ fn _delete_custom_field(conn: &mut PooledConn, param: &CustomInfos) -> Result<()
 }
 
 pub async fn delete_box_option(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = verify_perm(headers, &mut conn).await?;
-    debug_info(format!(
-        "删除自定义下拉字段的选项，操作者：{}，数据：{:?}",
-        id, value
-    ));
     let data: CustomInfos = serde_json::from_value(value)?;
     // let table = CUSTOM_BOX_FIELDS[data.ty];
     conn.query_drop(format!(

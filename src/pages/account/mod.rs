@@ -1,5 +1,5 @@
 mod customer;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     extract::Path,
@@ -120,15 +120,16 @@ async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     Ok(Response::empty())
 }
 
-pub async fn get_user<'err>(id: &str, conn: &mut DB<'err>) -> Result<User, Response> {
+pub async fn get_user<'err>(id: &str, conn: &mut DB<'err>) -> Result<Arc<User>, Response> {
     if let Some(user) = USER_CACHE.get(id) {
-        Ok(user.clone())
+        Ok(Arc::clone(user.value()))
     } else {
         let query = format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
         AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1");
         let result = conn.query_first(query)?;
         let u: User = op::some!(result; ret Err(Response::not_exist("用户不存在")));
-        USER_CACHE.insert(id.to_owned(), u.clone());
+        let u = Arc::new(u);
+        USER_CACHE.insert(id.to_owned(), Arc::clone(&u));
         Ok(u)
     }
 }

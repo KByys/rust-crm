@@ -5,7 +5,7 @@ use crate::libs::{dser::*, gen_id, TIME};
 use crate::pages::check_drop_down_box;
 use crate::perm::action::AccountGroup;
 use crate::perm::roles::ROLE_TABLES;
-use crate::{bearer, debug_info, parse_jwt_macro, Response, ResponseResult};
+use crate::{bearer, parse_jwt_macro, Response, ResponseResult};
 use crate::{catch, verify_perms};
 use axum::{http::HeaderMap, Json};
 use mysql::{params, prelude::Queryable};
@@ -67,7 +67,6 @@ pub async fn register_user(headers: HeaderMap, Json(value): Json<Value>) -> Resp
     let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
-    debug_info(format!("注册操作，操作者{}，数据:{:?}", id, value));
     let mut regis: User = serde_json::from_value(value)?;
     if let Some(true) = check_drop_down_box("department", &regis.department) {
         // nothing

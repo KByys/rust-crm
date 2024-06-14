@@ -3,7 +3,9 @@ use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use std::fmt::Display;
 
-use crate::{pages::DROP_DOWN_BOX, perm::roles::ROLE_TABLES};
+use crate::perm::roles::ROLE_TABLES;
+
+use super::cache::STORE_HOUSE_CACHE;
 
 pub fn deser_f32<'de, D>(de: D) -> Result<f32, D::Error>
 where
@@ -137,8 +139,6 @@ where
     }
 }
 
-
-
 pub fn serialize_null_to_default<S>(
     value: &Option<String>,
     serializer: S,
@@ -188,16 +188,11 @@ where
     if name.is_empty() {
         return Ok(None);
     }
-    unsafe {
-        let flag = DROP_DOWN_BOX
-            .map()
-            .get("storehouse")
-            .map_or(false, |k| k.contains_key(&name));
-        if flag {
-            Ok(Some(name))
-        } else {
-            Err(serde::de::Error::custom("库房不匹配"))
-        }
+    let flag = STORE_HOUSE_CACHE.iter().any(|s| s.name.eq(&name));
+    if flag {
+        Ok(Some(name))
+    } else {
+        Err(serde::de::Error::custom("库房不匹配"))
     }
 }
 pub fn deserialize_storehouse<'de, D>(de: D) -> Result<String, D::Error>
@@ -205,16 +200,11 @@ where
     D: Deserializer<'de>,
 {
     let name: String = Deserialize::deserialize(de)?;
-    unsafe {
-        let flag = DROP_DOWN_BOX
-            .map()
-            .get("storehouse")
-            .map_or(false, |k| k.contains_key(&name));
-        if flag {
-            Ok(name)
-        } else {
-            Err(serde::de::Error::custom("库房不匹配"))
-        }
+    let flag = STORE_HOUSE_CACHE.iter().any(|s| s.name.eq(&name));
+    if flag {
+        Ok(name)
+    } else {
+        Err(serde::de::Error::custom("库房不匹配"))
     }
 }
 

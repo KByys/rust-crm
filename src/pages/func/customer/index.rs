@@ -13,10 +13,18 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    bearer, catch, commit_or_rollback, database::{get_db, DB}, get_cache, libs::{gen_id, parse_multipart, TimeFormat, TIME}, log, pages::{
+    bearer, catch, commit_or_rollback,
+    database::{get_db, DB},
+    get_cache,
+    libs::{gen_id, parse_multipart, TimeFormat, TIME},
+    log,
+    pages::{
         account::{get_user, User},
         func::{__update_custom_fields, customer::CUSTOMER_CACHE, get_custom_fields},
-    }, parse_jwt_macro, perm::{action::CustomerGroup, roles::role_to_name}, verify_perms, Field, Response, ResponseResult
+    },
+    parse_jwt_macro,
+    perm::{action::CustomerGroup, roles::role_to_name},
+    verify_perms, Field, Response, ResponseResult,
 };
 
 pub fn customer_router() -> Router {
@@ -218,7 +226,7 @@ struct InsertParams {
 
 async fn insert_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: InsertParams = serde_json::from_value(value)?;
@@ -350,19 +358,15 @@ fn __query_full_data(
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
-    if let Some(value) = get_cache!(CUSTOMER_CACHE, "full",  &id) {
+    if let Some(value) = get_cache!(CUSTOMER_CACHE, "full", &id) {
         log!("{user} 成功查询到客户`{}`的信息 缓存", id);
         Ok(Response::ok(value.clone()))
     } else if let Some(data) = __query_full_data(&mut conn, &id)? {
-        log!(
-            "{user} 成功查询到客户`{}({})`的信息",
-            data.name,
-            id
-        );
+        log!("{user} 成功查询到客户`{}({})`的信息", data.name, id);
         CUSTOMER_CACHE
             .entry("full".to_string())
             .or_default()
@@ -499,25 +503,31 @@ async fn __query_customer_list_data<'err>(
 
 async fn query_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
     let param_str = value.to_string();
     let params: QueryParams = serde_json::from_value(value)?;
     log!("{user} 正在查询客户信息");
-    let time1 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
-    let value = if let Some(cache) = get_cache!(CUSTOMER_CACHE, &uid, &param_str)
-    {
+    let time1 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    let value = if let Some(cache) = get_cache!(CUSTOMER_CACHE, &uid, &param_str) {
         cache.clone()
     } else {
         let list = __query_customer_list_data(&mut conn, &params, &user).await?;
         let value = json!(list);
-        CUSTOMER_CACHE.entry(uid).or_default().insert(param_str, value.clone());
+        CUSTOMER_CACHE
+            .entry(uid)
+            .or_default()
+            .insert(param_str, value.clone());
         value
     };
 
-    let time2 = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap();
+    let time2 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
     println!("{:?}", time2 - time1);
     log!("{user} 成功查询到客户信息");
     Ok(Response::ok(json!(value)))
@@ -568,7 +578,7 @@ pub fn check_user_customer(
 }
 async fn update_customer(header: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let params: UpdateParams = serde_json::from_value(value)?;

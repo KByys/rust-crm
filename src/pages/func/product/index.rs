@@ -407,7 +407,9 @@ fn __update(
     if let Some(f) = part {
         std::fs::write(format!("resources/product/cover/{link}"), &f.bytes)?;
         println!("remove -- {}", cover);
-        std::fs::remove_file(format!("resources/product/cover/{cover}"))?;
+        if !cover.eq(DEFAULT.0) {
+            std::fs::remove_file(format!("resources/product/cover/{cover}")).unwrap_or(());
+        }
     }
     Ok(())
 }

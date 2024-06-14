@@ -167,7 +167,7 @@ lazy_static::lazy_static! {
         Arc::new(Mutex::new(Duration::from_secs(1)))
     };
 }
-
+/// 闲置6分钟，数据库连接失效，重新连接
 pub async fn get_db() -> Result<Arc<Mutex<PooledConn>>, Response> {
     let mut last_time = LAST_LEFT_TIME.lock().await;
     let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)?;

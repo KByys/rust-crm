@@ -1,7 +1,9 @@
+//! 新的权限设置，还没有完全设计好
+//! 
+//! 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
 #[macro_export]
 macro_rules! pstr {
     (@1 $t:expr) => {
@@ -125,7 +127,6 @@ pub fn default_role_perms() -> DashMap<String, Permission> {
                 #1 ("查询客户数据", "qc1", &_empty, 0, "不勾选仅可查看自己和共享的客户数据，勾选后默认可查看本部门的客户数据，也可设置为可查看全公司的客户数据"),
                 #1 ("导出客户数据", "exc1", &_empty, 0, "勾选后可将客户数据导出成表格"),
                 #1 ("安排客户拜访", "aa1", &_empty, 0, "勾选后可给其他业务员安排客户拜访")
-
             }
         },
         @root {

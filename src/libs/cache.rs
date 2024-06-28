@@ -23,6 +23,7 @@ macro_rules! gen_cache {
                     $N.clear();
                 }
             )+
+            STORE_HOUSE_CACHE.clear();
         }
     };
 }

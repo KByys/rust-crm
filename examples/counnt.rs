@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
+use serde_json::json;
 use tokio::sync::RwLock;
 use tokio::task;
 use dashmap::DashMap;
@@ -13,14 +14,9 @@ lazy_static::lazy_static! {
 
 #[tokio::main]
 async fn main() {
-    let mut tasks = Vec::new();
-    for i in 0..100 {
-        tasks.push(task::spawn(run(i % 20)));
-    }
-    for task in tasks {
-        task.await.unwrap();
-    }
-    sleep(Duration::from_secs(6))
+    let d = Arc::new(34);
+    let json = json!(d.as_ref());
+    println!("{}", json)
 }
 
 async fn run(i: i32) {

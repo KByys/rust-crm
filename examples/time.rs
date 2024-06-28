@@ -1,13 +1,10 @@
+use std::{thread::sleep, time::{Duration, SystemTime}};
+
+use crm_rust::libs::TIME;
 use regex::Regex;
+use serde_json::json;
 
 fn main() {
-    let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})").unwrap();
-    let hay = "On 2010-03-14 12:34, foo happened. On 2014-10-14, bar happened.";
-
-    let d: Option<(&str, [&str; 5])> = re.captures(hay).map(|e| e.extract());
-    println!("{:?}", d);
-    // for (_, [year, month, day, hours,  min]) in re.captures_iter(hay).map(|c| c.extract()) {
-    //     dates.push((year, month, day, hours, min));
-    // }
-    // println!("{:#?}", dates)
+    let map = crm_rust::libs::perm::default_role_perms();
+    std::fs::write("perm.json", json!(map).to_string()).unwrap();
 }

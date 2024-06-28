@@ -23,8 +23,6 @@ fn verify(token: String) {
 fn sign() -> String {
     use hmac::{Hmac, Mac};
     use jwt::{AlgorithmType, Header, SignWithKey, Token};
-    use sha2::Sha384;
-    use sha2::Sha512;
     use std::collections::BTreeMap;
 
     let key: Hmac<Sha512> = Hmac::new_from_slice(b"some-secret").unwrap();

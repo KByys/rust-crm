@@ -8,6 +8,12 @@ fn main() -> mysql::Result<()> {
     //     println!("{s}--------------");
 
     // }
+
+    let mut d = 456;
+
+    let ptr = (&mut d) as *mut i32;
+    let pl1 = ptr;
+    let pl2 = ptr;
     conn.query_drop("create table if not exists testt (name varchar(10), te varchar(10))")?;
     conn.exec_batch("insert into testt (name, te) values (?, ?)", ["12", "23"].iter().map(|v|("444", v)))?;
     Ok(())

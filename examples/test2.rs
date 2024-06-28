@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dashmap::DashMap;
 use mysql::params;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -14,10 +15,7 @@ lazy_static::lazy_static! {
 }
 #[tokio::main]
 async fn main() {
-    let tt: Option<i32> = None;
-    let pasrt = params! {
-         "te" => Some(45),
-         "test" => tt
-    };
-    println!("{:#?}", pasrt)
+    let map: DashMap<i32, i32> = [
+        (1, 2)
+    ] .into_iter().collect();
 }

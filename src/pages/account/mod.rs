@@ -1,4 +1,3 @@
-mod customer;
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
@@ -17,7 +16,11 @@ mod register;
 use crate::{
     bearer,
     database::{get_db, DB},
-    libs::{cache::{TOKEN_CACHE, USER_CACHE}, dser::*, time::TIME},
+    libs::{
+        cache::{TOKEN_CACHE, USER_CACHE},
+        dser::*,
+        time::TIME,
+    },
     parse_jwt_macro,
     perm::verify_permissions,
     Response, ResponseResult,
@@ -63,7 +66,7 @@ pub fn account_router() -> Router {
 }
 
 async fn get_role() -> ResponseResult {
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let roles = conn.query_map("SELECT name FROM roles WHERE id != 'root'", |s: String| s)?;
     Ok(Response::ok(json!(roles)))
@@ -97,7 +100,7 @@ struct Password {
 // }
 async fn set_user_password(headers: HeaderMap, Json(value): Json<Value>) -> ResponseResult {
     let bearer = bearer!(&headers);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let password: Password = serde_json::from_value(value)?;
@@ -124,8 +127,10 @@ pub async fn get_user<'err>(id: &str, conn: &mut DB<'err>) -> Result<Arc<User>, 
     if let Some(user) = USER_CACHE.get(id) {
         Ok(Arc::clone(user.value()))
     } else {
-        let query = format!("SELECT u.* FROM user u WHERE u.id = '{id}' 
-        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1");
+        let query = format!(
+            "SELECT u.* FROM user u WHERE u.id = '{id}' 
+        AND NOT EXISTS (SELECT 1 FROM leaver l WHERE l.id=u.id) LIMIT 1"
+        );
         let result = conn.query_first(query)?;
         let u: User = op::some!(result; ret Err(Response::not_exist("用户不存在")));
         let u = Arc::new(u);
@@ -141,7 +146,7 @@ pub fn get_user_with_phone_number(number: &str, conn: &mut PooledConn) -> Result
 
 async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;
@@ -166,7 +171,7 @@ async fn query_depart_count(header: HeaderMap, Path(depart): Path<String>) -> Re
 
 async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let _id = parse_jwt_macro!(&bearer, &mut conn => true);
     let user: Option<User> =
@@ -176,7 +181,7 @@ async fn query_full_data(header: HeaderMap, Path(id): Path<String>) -> ResponseR
 
 async fn query_list_data(header: HeaderMap, Path(depart): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let id = parse_jwt_macro!(&bearer, &mut conn => true);
     let u = get_user(&id, &mut conn).await?;

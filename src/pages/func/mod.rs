@@ -4,9 +4,6 @@ pub use order::Order;
 mod product;
 pub use product::DEFAULT_PRODUCT_COVER;
 mod report;
-// mod report;
-mod sea;
-mod sign;
 use std::collections::HashMap;
 
 use axum::Router;
@@ -20,10 +17,8 @@ mod customer;
 
 pub fn func_router() -> Router {
     customer::customer_router()
-        .merge(sea::sea_router())
         .merge(product::product_router())
         .merge(report::report_router())
-        .merge(sign::sign_router())
         .merge(order::order_router())
         .merge(store::store_router())
 }

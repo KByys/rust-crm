@@ -117,6 +117,24 @@ impl JWToken {
 #[macro_export]
 macro_rules! parse_jwt_macro {
     // 解析token，从中获取id信息
+    ($bearer:expr, $conn:expr) => {{
+        if let Some(id) = $crate::libs::cache::TOKEN_CACHE.get($bearer.token()) {
+            id.to_owned()
+        } else {
+            match $crate::token::parse_jwt($bearer) {
+                Some(jwt) => {
+                    if jwt.verify($conn)?.is_ok() {
+                        $crate::libs::cache::TOKEN_CACHE
+                            .insert($bearer.token().to_owned(), jwt.id.clone());
+                        jwt.id
+                    } else {
+                        return Err($crate::Response::token_error("Invalid Token"));
+                    }
+                }
+                _ => return Err($crate::Response::token_error("Invalid Token")),
+            }
+        }
+    }};
     ($bearer:expr, $conn:expr => $sub:expr) => {{
         if let Some(id) = $crate::libs::cache::TOKEN_CACHE.get($bearer.token()) {
             id.to_owned()

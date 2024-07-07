@@ -1,3 +1,4 @@
+pub mod supper;
 pub mod store;
 mod order;
 pub use order::Order;
@@ -21,6 +22,7 @@ pub fn func_router() -> Router {
         .merge(report::report_router())
         .merge(order::order_router())
         .merge(store::store_router())
+        .merge(supper::router())
 }
 
 pub fn verify_custom_fields(ver: &[&str], data: &[crate::Field]) -> bool {

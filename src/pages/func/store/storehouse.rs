@@ -13,6 +13,7 @@ use axum::{
     Json, Router,
 };
 use mysql::prelude::Queryable;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::Storehouse;
@@ -25,18 +26,31 @@ pub fn storehouse_router() -> Router {
         .route("/store/delete/storehouse/:id", delete(delete_storehouse))
 }
 
-async fn query_storehouse() -> ResponseResult {
+#[derive(Deserialize, Serialize)]
+struct QueryParam {
+    page: usize,
+    limit: usize,
+    #[serde(default)]
+    total: usize,
+    #[serde(default)]
+    records: Vec<Storehouse>,
+}
+
+async fn query_storehouse(Json(mut param): Json<QueryParam>) -> ResponseResult {
     let mut buf: Vec<Storehouse> = STORE_HOUSE_CACHE
         .iter()
         .map(|v| v.value().clone())
         .collect();
     buf.sort_by(|v1, v2| v1.create_time.cmp(&v2.create_time));
-    Ok(Response::ok(json!(buf)))
+    param.total = buf.len();
+    let max = buf.len().min(param.limit * param.page);
+    param.records = buf[param.limit * (param.page - 1)..max].to_owned();
+    Ok(Response::ok(json!(param)))
 }
 
 async fn create_storehouse(header: HeaderMap, Json(mut value): Json<Storehouse>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
@@ -63,7 +77,7 @@ async fn create_storehouse(header: HeaderMap, Json(mut value): Json<Storehouse>)
 
 async fn update_storehouse(header: HeaderMap, Json(mut value): Json<Storehouse>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;
@@ -88,7 +102,7 @@ async fn update_storehouse(header: HeaderMap, Json(mut value): Json<Storehouse>)
 
 async fn delete_storehouse(header: HeaderMap, Path(id): Path<String>) -> ResponseResult {
     let bearer = bearer!(&header);
-        let db = get_db().await?;
+    let db = get_db().await?;
     let mut conn = db.lock().await;
     let uid = parse_jwt_macro!(&bearer, &mut conn => true);
     let user = get_user(&uid, &mut conn).await?;

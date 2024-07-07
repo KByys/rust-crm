@@ -26,10 +26,6 @@ INSERT
 VALUES
     ('department', '总经办', '0000-00-00 00:00:00');
 
-INSERT
-    IGNORE INTO drop_down_box (name, value, create_time)
-VALUES
-    ('storehouse', '主仓库', '0000-00-00 00:00:00');
 
 CREATE TABLE IF NOT EXISTS custom_fields (
     -- 0 客户字段， 1 产品字段
@@ -93,8 +89,7 @@ CREATE TABLE IF NOT EXISTS user(
     department VARCHAR(30) NOT NULL,
     role VARCHAR(50) NOT NULL,
     sex INT NOT NULL,
-    PRIMARY KEY (id),
-    FOREIGN KEY (role) REFERENCES roles(id)
+    PRIMARY KEY (id)
 );
 
 -- 离职员工表
@@ -134,59 +129,40 @@ CREATE TABLE IF NOT EXISTS customer (
     tag VARCHAR(30),
     PRIMARY KEY (id)
 );
-
+-- 客户共享，先不管，不一定会写
 create table if not exists customer_share (
     customer varchar(150) not null,
     share_salesman varchar(150) not null,
     primary key (customer, share_salesman)
 );
-
+-- 客户额外的信息
 CREATE TABLE IF NOT EXISTS extra_customer_data (
     id VARCHAR(150) NOT NULL,
     salesman VARCHAR(150) NULL,
+    -- 历史遗留，添加日期
     added_date VARCHAR(25) NULL,
     -- 上传拜访时间, 暂时的值，后面需要用联合查询替换
     -- last_visited_time VARCHAR(25) NULL,
     -- 已拜访次数
     -- visited_count INT NOT NULL,
-    -- 上次成交时间 暂时的值，后面需要用联合查询替换
+    -- 上次成交时间 暂时的值，后面需要用联合查询替换，历史遗留
     last_transaction_time VARCHAR(25) NULL,
     PRIMARY KEY (id),
     FOREIGN KEY (id) REFERENCES customer(id),
     FOREIGN KEY (salesman) REFERENCES user(id)
 );
 
-create table if not exists customer_sea (
-    id varchar(150) not null,
-    put_in_date varchar(25) not null,
-    -- null即公司公海，否则对应部门名称，
-    sea varchar(30) null,
-    primary key (id)
-);
-
+-- 客户同事表
 CREATE TABLE IF NOT EXISTS customer_colleague(
     id VARCHAR(150) NOT NULL,
     customer VARCHAR(150) NOT NULL,
     phone VARCHAR(15) NOT NULL,
     name VARCHAR(10) NOT NULL,
     create_time VARCHAR(25),
-    PRIMARY KEY(id),
-    FOREIGN KEY (customer) REFERENCES customer(id)
+    PRIMARY KEY(id)
 );
 
-CREATE TABLE IF NOT EXISTS sign(
-    id VARCHAR(150) NOT NULL,
-    signer VARCHAR(150) NOT NULL,
-    customer VARCHAR(150) NULL,
-    address VARCHAR(150),
-    appoint VARCHAR(150) NULL,
-    location VARCHAR(25),
-    sign_time VARCHAR(25),
-    file TEXT,
-    content TEXT,
-    PRIMARY KEY (id)
-);
-
+-- 客户预约表，暂时不管
 CREATE TABLE IF NOT EXISTS appointment(
     id VARCHAR(150) NOT NULL,
     applicant VARCHAR(150) NOT NULL,
@@ -198,7 +174,7 @@ CREATE TABLE IF NOT EXISTS appointment(
     content TEXT,
     PRIMARY KEY (id)
 );
-
+-- 预约评论，不用管
 CREATE TABLE IF NOT EXISTS appoint_comment (
     id VARCHAR(150) NOT NULL,
     applicant VARCHAR(150) NOT NULL,
@@ -209,13 +185,18 @@ CREATE TABLE IF NOT EXISTS appoint_comment (
 );
 
 CREATE TABLE IF NOT EXISTS token(
+    -- 历史遗留，token类型，现在没有用处
     ty INT NOT NULL,
+
+    -- 用户id
     id VARCHAR(150) NOT NULL,
+    -- 时间戳，如果id对应的token的签发时间小于该时间戳
+    -- 则该token无效
     tbn BIGINT NULL,
     PRIMARY KEY(ty, id)
 );
 
--- 产品表
+-- 产品表， 之后大修改！！！！！！！！！！！！！！！！！！！
 -- num 编号
 -- cover 封面的地址
 CREATE TABLE IF NOT EXISTS product(
@@ -234,7 +215,7 @@ CREATE TABLE IF NOT EXISTS product(
     purchase_price FLOAT NOT NULL,
     PRIMARY KEY (id)
 );
-
+-- 产品库存，之后会调整
 CREATE TABLE IF NOT EXISTS product_store(
     product VARCHAR(150) NOT NULL,
     storehouse VARCHAR(30) NOT NULL,
@@ -346,3 +327,18 @@ INSERT
     IGNORE INTO storehouse (id, name, create_time, description)
 VALUES
     ('main_storehouse', '主仓库', '0000-00-00 00:00:00', '默认生成');
+
+create table if not exists supper(
+    id VARCHAR(150) NOT NULL,
+    company VARCHAR(100) NOT NULL UNIQUE,
+    contact VARCHAR(100) NOT NULL,
+    create_time VARCHAR(25) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    mobile_phone VARCHAR(20) NOT NULL,
+    address VARCHAR(100) NOT NULL,
+    blank VARCHAR(200) NOT NULL,
+    account VARCHAR(100) NOT NULL,
+    remark text NOT NULL,
+    PRIMARY KEY (id)
+);
+
